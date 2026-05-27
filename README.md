@@ -19,8 +19,11 @@ pip install -r requirements.txt
    **Google Drive API** в вашем проекте.
 2. В разделе *APIs & Services → Credentials* создайте **OAuth client ID** типа
    *Desktop app* и скачайте `client_secret_*.json`.
-3. Положите файл сюда: `secrets/client_secret.json`.
-4. Выполните однократный логин — откроется браузер Google:
+3. **Важно для автозапуска:** на странице *OAuth consent screen* нажмите
+   **Publish app** (Publishing status = *In production*). Иначе refresh token
+   будет истекать через 7 дней, и автозапуск в GitHub Actions начнёт падать.
+4. Положите файл сюда: `secrets/client_secret.json`.
+5. Выполните однократный логин — откроется браузер Google:
 
    ```bash
    python -m reportgen auth
@@ -29,6 +32,32 @@ pip install -r requirements.txt
    Токен сохранится в `secrets/token.json` и будет автоматически обновляться.
 
 Файлы в `secrets/` уже в `.gitignore` и в репозиторий не попадут.
+
+### Запуск из GitHub Actions
+
+В **Settings → Secrets and variables → Actions** добавьте два секрета:
+
+| Secret name                | Что туда положить                                       |
+|----------------------------|---------------------------------------------------------|
+| `GOOGLE_OAUTH_CLIENT_JSON` | целиком содержимое `secrets/client_secret.json`         |
+| `GOOGLE_OAUTH_TOKEN_JSON`  | целиком содержимое `secrets/token.json` (после `auth`)  |
+
+Дальше отчёт можно запустить вручную через вкладку **Actions → Generate
+quarterly report → Run workflow**, передав `config`, `period`, `prev`.
+
+## Папка-приёмник в Google Drive
+
+Чтобы не править ID файлов в коде каждый квартал:
+
+1. Создайте папку в Drive, например `Quarterly Reports / Digital Marketing`.
+2. Положите в неё:
+   - **Шаблон презентации** — имя должно матчиться regex из конфига, например
+     `Digital Marketing — template`.
+   - **Таблицы-источники** — например `channels Q4-2025`, `channels Q1-2026`.
+     Код возьмёт самый свежий файл, попавший под `name_pattern`.
+3. В URL папки скопируйте `<FOLDER_ID>` и пропишите его в конфиг.
+4. Поскольку используем OAuth от вашего имени — папка уже доступна, шарить
+   никому не нужно.
 
 ## Подготовка шаблона презентации
 

@@ -1,0 +1,38 @@
+name: Generate quarterly report
+
+on:
+  workflow_dispatch:
+    inputs:
+      config:
+        description: "Имя конфига из папки config/ (без .yaml)"
+        required: true
+        default: "digital_marketing"
+      period:
+        description: "Текущий период, например Q1-2026"
+        required: true
+      prev:
+        description: "Предыдущий период, например Q4-2025"
+        required: true
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Generate presentation
+        env:
+          GOOGLE_OAUTH_CLIENT_JSON: ${{ secrets.GOOGLE_OAUTH_CLIENT_JSON }}
+          GOOGLE_OAUTH_TOKEN_JSON: ${{ secrets.GOOGLE_OAUTH_TOKEN_JSON }}
+        run: |
+          python -m reportgen generate \
+            --config "config/${{ inputs.config }}.yaml" \
+            --period "${{ inputs.period }}" \
+            --prev   "${{ inputs.prev }}"

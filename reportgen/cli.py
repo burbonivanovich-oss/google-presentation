@@ -6,7 +6,8 @@ import typer
 from rich.console import Console
 
 from .auth import get_credentials
-from .config import ReportConfig
+from .config import ReportConfig, SheetSource
+from .drive import MIME_SHEET, MIME_SLIDES, DriveClient
 from .insights import qoq_changes, roas_below_benchmark, sigma_anomalies
 from .sheets import SheetsClient
 from .slides import SlidesClient
@@ -33,15 +34,22 @@ def generate(
     creds = get_credentials()
     sheets = SheetsClient(creds)
     slides = SlidesClient(creds)
+    drive = DriveClient(creds)
 
     console.print(f"[bold]Отчёт:[/bold] {cfg.name} ({previous_period} → {current_period})")
 
-    # 1. Читаем данные. В конфиге секция sources может иметь произвольные ключи.
-    data = {
-        key: sheets.read_table(src.spreadsheet_id, src.range)
-        for key, src in cfg.sources.items()
-    }
+    # 1. Читаем данные. spreadsheet_id может быть задан явно или найден по
+    #    имени в расшаренной папке (folder_id).
+    data = {}
+    for key, src in cfg.sources.items():
+        sid = _resolve_spreadsheet(src, cfg.folder_id, drive)
+        data[key] = sheets.read_table(sid, src.range)
+        console.print(f"  • {key}: {data[key].shape[0]} строк из {sid}")
     console.print(f"Прочитано таблиц: {len(data)}")
+
+    template_id = cfg.presentation_template_id or drive.find_in_folder(
+        cfg.folder_id, cfg.presentation_template_name, MIME_SLIDES
+    )["id"]
 
     # 2. Ищем инсайты. Ожидаем источник 'channels' с колонками:
     #    period, channel, spend, revenue, roas, leads
@@ -75,7 +83,7 @@ def generate(
 
     # 3. Копируем шаблон.
     title = f"{cfg.name} — {current_period}"
-    pres_id = slides.copy_presentation(cfg.presentation_template_id, title)
+    pres_id = slides.copy_presentation(template_id, title)
     console.print(f"Создана копия шаблона: {slides.presentation_url(pres_id)}")
 
     # 4. Дублируем insight-слайд и подставляем тексты в каждый дубликат.
@@ -113,6 +121,12 @@ def generate(
     slides.replace_placeholders(pres_id, mapping)
 
     console.print(f"[green]Готово[/green] → {slides.presentation_url(pres_id)}")
+
+
+def _resolve_spreadsheet(src: SheetSource, folder_id: str | None, drive: DriveClient) -> str:
+    if src.spreadsheet_id:
+        return src.spreadsheet_id
+    return drive.find_in_folder(folder_id, src.name_pattern, MIME_SHEET)["id"]
 
 
 def _replace_in_pages(

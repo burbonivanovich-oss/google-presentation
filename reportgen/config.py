@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
@@ -8,8 +8,15 @@ import yaml
 
 @dataclass
 class SheetSource:
-    spreadsheet_id: str
-    range: str          # например "channels!A1:H100"
+    range: str                          # "A1:F1000" или "channels!A1:F1000"
+    spreadsheet_id: str | None = None   # явный ID
+    name_pattern: str | None = None     # либо паттерн имени в folder_id
+
+    def __post_init__(self) -> None:
+        if not self.spreadsheet_id and not self.name_pattern:
+            raise ValueError(
+                "У источника должен быть либо spreadsheet_id, либо name_pattern"
+            )
 
 
 @dataclass
@@ -22,13 +29,26 @@ class InsightRules:
 @dataclass
 class ReportConfig:
     name: str
-    presentation_template_id: str
-    # Идентификатор слайда в шаблоне, который дублируется под каждый инсайт.
-    # В шаблоне в этом слайде должны быть плейсхолдеры {{insight_headline}} и {{insight_detail}}.
     insight_slide_id: str
     sources: dict[str, SheetSource]
     insights: InsightRules
     static_placeholders: dict[str, str]
+    # Папка-приёмник в Drive: все таблицы и шаблон лежат тут.
+    folder_id: str | None = None
+    presentation_template_id: str | None = None
+    presentation_template_name: str | None = None  # ищется в folder_id
+
+    def __post_init__(self) -> None:
+        if not self.presentation_template_id and not self.presentation_template_name:
+            raise ValueError("Нужен presentation_template_id или presentation_template_name")
+        needs_folder = self.presentation_template_name or any(
+            s.name_pattern for s in self.sources.values()
+        )
+        if needs_folder and not self.folder_id:
+            raise ValueError(
+                "Используете name_pattern / presentation_template_name — "
+                "тогда обязателен folder_id"
+            )
 
     @classmethod
     def load(cls, path: str | Path) -> "ReportConfig":
@@ -38,9 +58,11 @@ class ReportConfig:
         }
         return cls(
             name=data["name"],
-            presentation_template_id=data["presentation_template_id"],
             insight_slide_id=data["insight_slide_id"],
             sources=sources,
             insights=InsightRules(**data.get("insights", {})),
             static_placeholders=data.get("static_placeholders", {}),
+            folder_id=data.get("folder_id"),
+            presentation_template_id=data.get("presentation_template_id"),
+            presentation_template_name=data.get("presentation_template_name"),
         )
