@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.env
+
+# Google OAuth secrets — NEVER commit
+secrets/client_secret*.json
+secrets/token*.json
+*.token.json
+
+# Build / output
+dist/
+build/
+out/
