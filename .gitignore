@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.env
+
+# Google credentials — NEVER commit
+secrets/service_account*.json
+secrets/client_secret*.json
+secrets/token*.json
+*.token.json
+
+# Build / output
+dist/
+build/
+out/

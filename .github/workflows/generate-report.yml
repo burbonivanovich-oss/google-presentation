@@ -1,0 +1,57 @@
+name: Generate quarterly report
+
+on:
+  workflow_dispatch:
+    inputs:
+      reports:
+        description: "Какие отчёты собрать (через запятую): retail, horeca, saas, all"
+        required: true
+        default: "retail"
+      period:
+        description: "Текущий период, например Q1-2026"
+        required: true
+      prev:
+        description: "Предыдущий период, например Q4-2025"
+        required: true
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      configs: ${{ steps.plan.outputs.configs }}
+    steps:
+      - id: plan
+        run: |
+          input="${{ inputs.reports }}"
+          if [ "$input" = "all" ]; then
+            echo 'configs=["retail","horeca","saas"]' >> "$GITHUB_OUTPUT"
+          else
+            list=$(echo "$input" | tr ',' '\n' | sed 's/^ *//;s/ *$//' | jq -R . | jq -sc .)
+            echo "configs=$list" >> "$GITHUB_OUTPUT"
+          fi
+
+  generate:
+    needs: plan
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        config: ${{ fromJSON(needs.plan.outputs.configs) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Generate ${{ matrix.config }}
+        env:
+          GCP_SERVICE_ACCOUNT_JSON: ${{ secrets.GCP_SERVICE_ACCOUNT_JSON }}
+        run: |
+          python -m reportgen generate \
+            --config "config/${{ matrix.config }}.yaml" \
+            --period "${{ inputs.period }}" \
+            --prev   "${{ inputs.prev }}"
