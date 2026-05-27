@@ -17,8 +17,22 @@ class SlidesClient:
         self._slides = build("slides", "v1", credentials=creds, cache_discovery=False)
         self._drive = build("drive", "v3", credentials=creds, cache_discovery=False)
 
-    def copy_presentation(self, template_id: str, title: str) -> str:
-        copy = self._drive.files().copy(fileId=template_id, body={"name": title}).execute()
+    def copy_presentation(
+        self,
+        template_id: str,
+        title: str,
+        parent_folder_id: str | None = None,
+    ) -> str:
+        body: dict = {"name": title}
+        if parent_folder_id:
+            # Иначе сервис-аккаунт скопирует в свой собственный Drive,
+            # к которому у пользователя нет доступа.
+            body["parents"] = [parent_folder_id]
+        copy = (
+            self._drive.files()
+            .copy(fileId=template_id, body=body, supportsAllDrives=True)
+            .execute()
+        )
         return copy["id"]
 
     def get_presentation(self, presentation_id: str) -> dict:

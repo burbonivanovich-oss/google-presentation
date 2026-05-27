@@ -5,7 +5,7 @@ from pathlib import Path
 import typer
 from rich.console import Console
 
-from .auth import get_credentials
+from .auth import get_credentials, service_account_email
 from .config import ReportConfig, SheetSource
 from .drive import MIME_SHEET, MIME_SLIDES, DriveClient
 from .insights import qoq_changes, roas_below_benchmark, sigma_anomalies
@@ -17,10 +17,12 @@ console = Console()
 
 
 @app.command()
-def auth() -> None:
-    """Однократный вход в Google и сохранение токена."""
-    get_credentials()
-    console.print("[green]OK[/green] токен сохранён в secrets/token.json")
+def whoami() -> None:
+    """Показать email сервис-аккаунта — его нужно добавить в шаринг папки Drive."""
+    get_credentials()  # упадёт с понятной ошибкой, если ключа нет
+    email = service_account_email()
+    console.print(f"Service account email: [bold]{email}[/bold]")
+    console.print("Расшарьте на этот email вашу папку Drive (роль Editor).")
 
 
 @app.command()
@@ -81,9 +83,10 @@ def generate(
 
     console.print(f"Найдено инсайтов: {len(insights)}")
 
-    # 3. Копируем шаблон.
+    # 3. Копируем шаблон в ту же папку, иначе у пользователя не будет доступа
+    #    к копии (она окажется в "My Drive" сервис-аккаунта).
     title = f"{cfg.name} — {current_period}"
-    pres_id = slides.copy_presentation(template_id, title)
+    pres_id = slides.copy_presentation(template_id, title, parent_folder_id=cfg.folder_id)
     console.print(f"Создана копия шаблона: {slides.presentation_url(pres_id)}")
 
     # 4. Дублируем insight-слайд и подставляем тексты в каждый дубликат.

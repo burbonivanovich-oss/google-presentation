@@ -2,8 +2,8 @@
 
 Автоматическая сборка квартальных Google Slides отчётов из данных в Google Sheets.
 
-Текущий статус: **MVP** — CLI + один отчёт (digital marketing). Авторизация OAuth 2.0
-от имени пользователя. Шаблон презентации копируется, в копию подставляются
+Текущий статус: **MVP** — CLI + один отчёт (digital marketing). Авторизация через
+Google **Service Account**. Шаблон презентации копируется, в копию подставляются
 значения KPI и динамически дублируются «слайды-инсайты».
 
 ## Установка
@@ -13,34 +13,34 @@ python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-## Подключение к Google API
+## Подключение к Google API (Service Account)
 
-1. В Google Cloud Console включите **Google Sheets API**, **Google Slides API** и
-   **Google Drive API** в вашем проекте.
-2. В разделе *APIs & Services → Credentials* создайте **OAuth client ID** типа
-   *Desktop app* и скачайте `client_secret_*.json`.
-3. **Важно для автозапуска:** на странице *OAuth consent screen* нажмите
-   **Publish app** (Publishing status = *In production*). Иначе refresh token
-   будет истекать через 7 дней, и автозапуск в GitHub Actions начнёт падать.
-4. Положите файл сюда: `secrets/client_secret.json`.
-5. Выполните однократный логин — откроется браузер Google:
+1. В Google Cloud Console включите три API в вашем проекте
+   (*APIs & Services → Library*): **Google Sheets API**, **Google Slides API**,
+   **Google Drive API**.
+2. *IAM & Admin → Service Accounts → Create service account*:
+   - Name: `report-generator` (любое).
+   - Роли проекта можно не назначать — доступ выдаётся через шаринг файлов.
+   - Создать.
+3. У созданного аккаунта откройте вкладку **Keys → Add key → Create new key → JSON**.
+   Скачается файл с client_email и приватным ключом.
+4. Положите его в репозиторий локально как `secrets/service_account.json`
+   (он в `.gitignore`).
+5. Запомните email сервис-аккаунта (вида
+   `report-generator@<project>.iam.gserviceaccount.com`) — на него нужно расшарить
+   папку Drive. Подсказать его умеет CLI:
 
    ```bash
-   python -m reportgen auth
+   python -m reportgen whoami
    ```
-
-   Токен сохранится в `secrets/token.json` и будет автоматически обновляться.
-
-Файлы в `secrets/` уже в `.gitignore` и в репозиторий не попадут.
 
 ### Запуск из GitHub Actions
 
-В **Settings → Secrets and variables → Actions** добавьте два секрета:
+В **Settings → Secrets and variables → Actions** добавьте один секрет:
 
-| Secret name                | Что туда положить                                       |
-|----------------------------|---------------------------------------------------------|
-| `GOOGLE_OAUTH_CLIENT_JSON` | целиком содержимое `secrets/client_secret.json`         |
-| `GOOGLE_OAUTH_TOKEN_JSON`  | целиком содержимое `secrets/token.json` (после `auth`)  |
+| Secret name                | Что туда положить                                  |
+|----------------------------|----------------------------------------------------|
+| `GCP_SERVICE_ACCOUNT_JSON` | целиком содержимое `secrets/service_account.json`  |
 
 Дальше отчёт можно запустить вручную через вкладку **Actions → Generate
 quarterly report → Run workflow**, передав `config`, `period`, `prev`.
@@ -56,8 +56,15 @@ quarterly report → Run workflow**, передав `config`, `period`, `prev`.
    - **Таблицы-источники** — например `channels Q4-2025`, `channels Q1-2026`.
      Код возьмёт самый свежий файл, попавший под `name_pattern`.
 3. В URL папки скопируйте `<FOLDER_ID>` и пропишите его в конфиг.
-4. Поскольку используем OAuth от вашего имени — папка уже доступна, шарить
-   никому не нужно.
+4. **Расшарьте папку на email сервис-аккаунта** (роль **Editor**). Доступ
+   автоматически распространится на всё содержимое — и на шаблон, и на таблицы,
+   и на будущие копии презентаций.
+
+> **Важно про владельца файлов.** Сгенерированная презентация будет числиться
+> за сервис-аккаунтом (у личного Gmail передать владение SA → пользователю
+> нельзя — это ограничение Google). Но т.к. файл создаётся в вашей расшаренной
+> папке, вы видите его и можете редактировать. Если нужен файл «за вашим
+> именем» — `File → Make a copy` в Google Slides.
 
 ## Подготовка шаблона презентации
 
