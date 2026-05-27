@@ -2,9 +2,10 @@
 
 Автоматическая сборка квартальных Google Slides отчётов из данных в Google Sheets.
 
-Текущий статус: **MVP** — CLI + один отчёт (digital marketing). Авторизация через
-Google **Service Account**. Шаблон презентации копируется, в копию подставляются
-значения KPI и динамически дублируются «слайды-инсайты».
+Текущий статус: **MVP**. Авторизация через Google **Service Account**.
+Три параллельных отчёта: `retail` (касы, ОФД), `horeca` (общепит), `saas`
+(B2B SaaS). Каждый — свой YAML-конфиг в `config/`. Workflow умеет запускать
+любое подмножество в матрице.
 
 ## Установка
 
@@ -66,28 +67,25 @@ quarterly report → Run workflow**, передав `config`, `period`, `prev`.
 > папке, вы видите его и можете редактировать. Если нужен файл «за вашим
 > именем» — `File → Make a copy` в Google Slides.
 
+## Диагностика — что видит сервис-аккаунт
+
+```bash
+# что лежит в папке
+python -m reportgen list-folder <FOLDER_ID>
+
+# слайды конкретной презентации с превью — удобно для поиска нужного слайда
+python -m reportgen list-slides <PRESENTATION_ID>
+```
+
 ## Подготовка шаблона презентации
 
 В вашей презентации-шаблоне:
 
-- Везде, где нужно вставить значение, пишите плейсхолдер вида `{{period}}`,
-  `{{company}}`, и т.п. — он будет заменён на текст из конфига или вычисленный.
-- Один слайд сделайте «заготовкой под инсайт» с двумя плейсхолдерами:
-  `{{insight_headline}}` (заголовок) и `{{insight_detail}}` (подпись).
-  Этот слайд будет копироваться столько раз, сколько найдено инсайтов
-  в данных, а исходный — удаляться.
-
-Узнать `objectId` нужного слайда можно через API:
-
-```bash
-python - <<'PY'
-from reportgen.auth import get_credentials
-from reportgen.slides import SlidesClient
-sc = SlidesClient(get_credentials())
-for s in sc.get_presentation("YOUR_TEMPLATE_ID")["slides"]:
-    print(s["objectId"])
-PY
-```
+- Везде, где нужно вставить значение, пишите плейсхолдер `{{period}}`,
+  `{{company}}`, `{{total_revenue}}` и т.п. — будут заменены.
+- На один слайд можно положить плейсхолдеры `{{insight_headline}}` и
+  `{{insight_detail}}` — этот слайд будет копироваться под каждый найденный
+  инсайт, а исходный удалится. Если такого слайда нет — фаза просто пропускается.
 
 ## Подготовка данных в Sheets
 
@@ -97,21 +95,23 @@ PY
 |----------|----------|-------|---------|------|-------|
 | Q4-2025  | Google   | 500000| 1800000 | 3.6  | 230   |
 | Q1-2026  | Google   | 620000| 2100000 | 3.4  | 245   |
-| …        | …        | …     | …       | …    | …     |
+
+> Файлы должны быть в **Google-форматах** (Sheets / Slides), а не в .xlsx / .pptx.
+> Загруженные файлы Microsoft Office API не читает — нажмите ПКМ на файле в
+> Drive → *Открыть с помощью Google Таблицы / Презентации → Файл → Сохранить
+> как Google …*
 
 ## Генерация отчёта
 
-```bash
-cp config/digital_marketing.example.yaml config/digital_marketing.yaml
-# вписать ID шаблона, ID таблицы, id insight-слайда
+Локально:
 
-python -m reportgen generate \
-    --config config/digital_marketing.yaml \
-    --period Q1-2026 \
-    --prev   Q4-2025
+```bash
+python -m reportgen generate --config config/retail.yaml --period Q1-2026 --prev Q4-2025
 ```
 
-На выходе — ссылка на новую копию презентации в вашем Google Drive.
+Из GitHub Actions: вкладка **Actions → Generate quarterly report → Run workflow**.
+В поле *reports* можно указать `retail`, `horeca`, `saas`, через запятую
+несколько (`retail,horeca`) или `all` — тогда соберётся всё параллельно.
 
 ## Какие инсайты ищутся по умолчанию
 
@@ -123,9 +123,18 @@ python -m reportgen generate \
 
 Пороги настраиваются в секции `insights:` конфига.
 
+## Доступные KPI-плейсхолдеры
+
+Вычисляются автоматически по источнику `channels` за текущий период:
+
+- `{{total_spend}}`, `{{total_revenue}}`, `{{total_leads}}` — суммы.
+- `{{period}}`, `{{previous_period}}`, `{{report_name}}`, `{{direction}}`.
+
+Дополнительные строковые плейсхолдеры — в `static_placeholders:` конфига.
+
 ## Что планируется дальше
 
-1. Второй и третий отчёты (под ваши направления, после получения шаблонов).
-2. Автозапуск по расписанию (GitHub Actions / cron).
-3. Веб-UI с одной кнопкой «Сгенерировать».
-4. LLM-комментарии к инсайтам через Claude API (опционально).
+1. Автозапуск по расписанию (cron).
+2. Веб-UI с одной кнопкой «Сгенерировать».
+3. LLM-комментарии к инсайтам через Claude API.
+4. Графики из Sheets как картинки на слайдах.

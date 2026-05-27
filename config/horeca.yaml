@@ -1,0 +1,20 @@
+# Общепит.
+
+name: "Сверка — Общепит"
+
+folder_id: "5NmGZPCN0flzJL64JPwFViHBOxi4uD9B"
+
+presentation_template_name: "шаблон|template"
+
+sources:
+  channels:
+    name_pattern: "общепит|horeca"
+    range: "A1:Z1000"
+
+insights:
+  qoq_threshold_pct: 20.0
+  sigma: 3.0
+  roas_benchmark: 3.0
+
+static_placeholders:
+  "{{direction}}": "Общепит"

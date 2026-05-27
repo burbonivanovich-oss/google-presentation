@@ -29,14 +29,15 @@ class InsightRules:
 @dataclass
 class ReportConfig:
     name: str
-    insight_slide_id: str
     sources: dict[str, SheetSource]
     insights: InsightRules
     static_placeholders: dict[str, str]
-    # Папка-приёмник в Drive: все таблицы и шаблон лежат тут.
     folder_id: str | None = None
     presentation_template_id: str | None = None
-    presentation_template_name: str | None = None  # ищется в folder_id
+    presentation_template_name: str | None = None
+    # Опционально. Если не указан — код найдёт слайд с {{insight_headline}} сам.
+    # Если в шаблоне такого слайда нет — фаза инсайтов просто пропускается.
+    insight_slide_id: str | None = None
 
     def __post_init__(self) -> None:
         if not self.presentation_template_id and not self.presentation_template_name:
@@ -58,11 +59,11 @@ class ReportConfig:
         }
         return cls(
             name=data["name"],
-            insight_slide_id=data["insight_slide_id"],
             sources=sources,
             insights=InsightRules(**data.get("insights", {})),
             static_placeholders=data.get("static_placeholders", {}),
             folder_id=data.get("folder_id"),
             presentation_template_id=data.get("presentation_template_id"),
             presentation_template_name=data.get("presentation_template_name"),
+            insight_slide_id=data.get("insight_slide_id"),
         )

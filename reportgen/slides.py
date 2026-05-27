@@ -71,5 +71,38 @@ class SlidesClient:
             body={"requests": [{"deleteObject": {"objectId": slide_id}}]},
         ).execute()
 
+    def find_slide_with_text(self, presentation_id: str, needle: str) -> str | None:
+        """Возвращает objectId первого слайда, содержащего подстроку needle."""
+        pres = self.get_presentation(presentation_id)
+        for slide in pres.get("slides", []):
+            for element in slide.get("pageElements", []):
+                shape = element.get("shape")
+                if not shape:
+                    continue
+                text = shape.get("text", {})
+                for te in text.get("textElements", []):
+                    run = te.get("textRun")
+                    if run and needle in run.get("content", ""):
+                        return slide["objectId"]
+        return None
+
+    def list_slides(self, presentation_id: str) -> list[tuple[str, str]]:
+        """Список (objectId, preview-текст) слайдов для диагностики."""
+        pres = self.get_presentation(presentation_id)
+        out = []
+        for slide in pres.get("slides", []):
+            preview_parts = []
+            for element in slide.get("pageElements", []):
+                shape = element.get("shape")
+                if not shape:
+                    continue
+                for te in shape.get("text", {}).get("textElements", []):
+                    run = te.get("textRun")
+                    if run:
+                        preview_parts.append(run.get("content", "").strip())
+            preview = " | ".join(p for p in preview_parts if p)[:80]
+            out.append((slide["objectId"], preview))
+        return out
+
     def presentation_url(self, presentation_id: str) -> str:
         return f"https://docs.google.com/presentation/d/{presentation_id}/edit"

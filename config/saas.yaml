@@ -1,0 +1,20 @@
+# B2B SaaS — учётное решение для МСБ.
+
+name: "Сверка — B2B SaaS"
+
+folder_id: "5NmGZPCN0flzJL64JPwFViHBOxi4uD9B"
+
+presentation_template_name: "шаблон|template"
+
+sources:
+  channels:
+    name_pattern: "saas|saaс|b2b"
+    range: "A1:Z1000"
+
+insights:
+  qoq_threshold_pct: 20.0
+  sigma: 3.0
+  roas_benchmark: 3.0
+
+static_placeholders:
+  "{{direction}}": "B2B SaaS"
