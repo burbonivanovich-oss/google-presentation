@@ -4,7 +4,7 @@
 
 name: "Сверка — Розница (кассы, ОФД)"
 
-folder_id: "5NmGZPCN0flzJL64JPwFViHBOxi4uD9B"
+folder_id: "15NmGZPCN0flzJL64JPwFViHBOxi4uD9B"
 
 # Берём первую найденную Google Slides в папке, в имени которой есть "шаблон"
 # (без учёта регистра). Если не подойдёт — заменим на точное имя.
