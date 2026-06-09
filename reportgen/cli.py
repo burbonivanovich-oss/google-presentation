@@ -6,7 +6,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from .auth import get_credentials, service_account_email
+from .auth import get_credentials
 from .config import ReportConfig, SheetSource
 from .drive import MIME_SHEET, MIME_SLIDES, DriveClient
 from .insights import qoq_changes, roas_below_benchmark, sigma_anomalies
@@ -21,12 +21,14 @@ INSIGHT_DETAIL = "{{insight_detail}}"
 
 
 @app.command()
-def whoami() -> None:
-    """Показать email сервис-аккаунта — его нужно добавить в шаринг папки Drive."""
+def auth() -> None:
+    """Локальный браузерный логин в Google и сохранение token.json."""
     get_credentials()
-    email = service_account_email()
-    console.print(f"Service account email: [bold]{email}[/bold]")
-    console.print("Расшарьте на этот email вашу папку Drive (роль Editor).")
+    console.print("[green]OK[/green] токен сохранён в secrets/token.json")
+    console.print(
+        "Дальше: скопируйте содержимое secrets/token.json в GitHub Secret "
+        "GOOGLE_OAUTH_TOKEN_JSON."
+    )
 
 
 @app.command(name="list-folder")
@@ -111,6 +113,8 @@ def generate(
     )["id"]
     title = f"{cfg.name} — {current_period}"
     pres_id = slides.copy_presentation(template_id, title, parent_folder_id=cfg.folder_id)
+    # parent_folder_id всё равно ставим — чтобы копия легла рядом с шаблоном
+    # в той же папке, а не в "Мой диск" корнем.
     console.print(f"Копия шаблона: {slides.presentation_url(pres_id)}")
 
     # 4. Insight-слайды
