@@ -54,10 +54,12 @@ def list_folder(folder_id: str = typer.Argument(..., help="ID папки в Driv
     table.add_column("Имя"); table.add_column("Тип"); table.add_column("ID", style="dim")
     for f in files:
         kind = {
-            "application/vnd.google-apps.spreadsheet": "Sheet",
-            "application/vnd.google-apps.presentation": "Slides",
+            "application/vnd.google-apps.spreadsheet": "Google Sheet",
+            "application/vnd.google-apps.presentation": "Google Slides",
             "application/vnd.google-apps.folder": "Folder",
-        }.get(f["mimeType"], f["mimeType"].split(".")[-1])
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ".xlsx (не Google!)",
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation": ".pptx (не Google!)",
+        }.get(f["mimeType"], f["mimeType"])
         table.add_row(f["name"], kind, f["id"])
     console.print(table)
 
