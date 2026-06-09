@@ -47,6 +47,15 @@ jobs:
 
       - run: pip install -r requirements.txt
 
+      - name: Diagnostics (что SA видит в папке и кто SA)
+        env:
+          GCP_SERVICE_ACCOUNT_JSON: ${{ secrets.GCP_SERVICE_ACCOUNT_JSON }}
+        run: |
+          python -m reportgen whoami
+          folder_id=$(python -c "import yaml; print(yaml.safe_load(open('config/${{ matrix.config }}.yaml'))['folder_id'])")
+          echo "Folder ID из конфига: $folder_id"
+          python -m reportgen list-folder "$folder_id" || true
+
       - name: Generate ${{ matrix.config }}
         env:
           GCP_SERVICE_ACCOUNT_JSON: ${{ secrets.GCP_SERVICE_ACCOUNT_JSON }}
