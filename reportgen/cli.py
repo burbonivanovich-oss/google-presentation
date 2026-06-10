@@ -8,6 +8,7 @@ from rich.table import Table
 
 from .auth import get_credentials
 from .config import ReportConfig, SheetSource
+from .design_test import build_design_test_deck
 from .drive import MIME_SHEET, MIME_SLIDES, DriveClient
 from .insights import qoq_changes, roas_below_benchmark, sigma_anomalies
 from .sheets import SheetsClient
@@ -76,6 +77,27 @@ def list_slides(presentation_id: str = typer.Argument(..., help="ID презен
     for oid, preview in slides.list_slides(presentation_id):
         table.add_row(oid, preview or "(пусто)")
     console.print(table)
+
+
+@app.command(name="design-test")
+def design_test(
+    folder_id: str | None = typer.Option(
+        None, "--folder", help="ID папки в Drive, куда положить тестовую презентацию"
+    ),
+) -> None:
+    """Создать презентацию-стенд для проверки дизайн-фиделити Slides API."""
+    creds = get_credentials()
+    slides = SlidesClient(creds)
+    sheets = SheetsClient(creds)
+    console.print("Собираю design-fidelity тест...")
+    pres_id = build_design_test_deck(
+        slides._slides,  # noqa: SLF001
+        sheets._svc,  # noqa: SLF001
+        slides._drive,  # noqa: SLF001
+        parent_folder_id=folder_id,
+    )
+    console.print(f"[green]Готово[/green] → {slides.presentation_url(pres_id)}")
+    console.print("Откройте в браузере и сравните блоки «Что просили» с фактом.")
 
 
 @app.command()
