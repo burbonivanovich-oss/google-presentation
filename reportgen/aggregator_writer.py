@@ -82,23 +82,31 @@ def _page_overview(rd: AggregateResult) -> list[list]:
     rows = [[f"Сводка отчёта — {rd.period_label}"], []]
     pf = rd.plan_fact_quarter
     if pf:
-        cur = pf["cur"]; prev = pf["prev"]; yoy = pf["yoy_base"]
+        cur = pf["cur"]
+        tx_cur = pf.get("tx_cur_rev", 0)
+        tx_prev = pf.get("tx_prev_rev", 0)
+        tx_yoy = pf.get("tx_yoy_rev", 0)
+        tx_cur_q = pf.get("tx_cur_qty", 0)
+        tx_prev_q = pf.get("tx_prev_qty", 0)
+        tx_yoy_q = pf.get("tx_yoy_qty", 0)
+        qoq = ((tx_cur - tx_prev) / tx_prev * 100) if tx_prev else 0
+        yoy = ((tx_cur - tx_yoy) / tx_yoy * 100) if tx_yoy else 0
         rows += [
             ["Метрика", rd.period_label, rd.prev_period_label,
              f"Q{rd.cur_q} {rd.cur_y - 1}", "QoQ %", "YoY %"],
-            ["Выручка факт",
-             _fmt(cur["fact_rev"]), _fmt(prev["fact_rev"]), _fmt(yoy["fact_rev"]),
-             f"{pf['qoq_delta']:+.1f}%", f"{pf['yoy_delta']:+.1f}%"],
-            ["Выручка план", _fmt(cur["plan_rev"]), "—", "—",
+            ["Выручка факт", _fmt(tx_cur), _fmt(tx_prev), _fmt(tx_yoy),
+             f"{qoq:+.1f}%", f"{yoy:+.1f}%"],
+            ["Выручка план (Царь свод)", _fmt(cur["plan_rev"]), "—", "—",
              f"% выполнения: {pf['cur_pct']:.0f}%", ""],
             ["Кол-во оплат",
-             f"{int(cur['fact_qty']):,}".replace(",", " "),
-             f"{int(prev['fact_qty']):,}".replace(",", " "),
-             f"{int(yoy['fact_qty']):,}".replace(",", " "), "", ""],
+             f"{tx_cur_q:,}".replace(",", " "),
+             f"{tx_prev_q:,}".replace(",", " "),
+             f"{tx_yoy_q:,}".replace(",", " "), "", ""],
             ["Ср.чек факт",
-             _fmt(cur["fact_rev"] / cur["fact_qty"] if cur["fact_qty"] else 0),
-             _fmt(prev["fact_rev"] / prev["fact_qty"] if prev["fact_qty"] else 0),
-             "", "", ""],
+             _fmt(tx_cur / tx_cur_q if tx_cur_q else 0),
+             _fmt(tx_prev / tx_prev_q if tx_prev_q else 0),
+             _fmt(tx_yoy / tx_yoy_q if tx_yoy_q else 0),
+             "", ""],
             [],
         ]
     rows += [["Направление", "Выручка факт", f"vs {rd.prev_period_label}",
@@ -145,17 +153,21 @@ def _page_market(rd: AggregateResult) -> list[list]:
 
 
 def _page_ads(rd: AggregateResult) -> list[list]:
+    from .aggregator import MONTHS_RU
     rows = [[f"Контекст реклама — {rd.period_label}"], []]
     for product, df in rd.ads_by_product.items():
         rows += [[f"Продукт: {product}"]]
         if df is None or df.empty:
             rows.append(["(нет данных)"])
             continue
-        # помесячный свод выручки и оплат
         if "_year" in df.columns:
-            sel = df[df["_year"] == rd.cur_y]
-            g = sel.groupby("_month")[["Выручка", "Оплаты"]].sum().reset_index()
-            g["Месяц"] = g["_month"].apply(lambda m: f"месяц {int(m)}")
+            sel = df[df["_year"].notna() & df["_month"].notna()].copy()
+            g = sel.groupby(["_year", "_month"])[["Выручка", "Оплаты"]].sum().reset_index()
+            g = g.sort_values(["_year", "_month"])
+            g["Месяц"] = g.apply(
+                lambda r: f"{MONTHS_RU.get(int(r['_month']), '?')} {int(r['_year'])}",
+                axis=1,
+            )
             rows.append(["Месяц", "Выручка", "Оплаты"])
             for _, r in g.iterrows():
                 rows.append([r["Месяц"], _fmt(r["Выручка"]), f"{int(r['Оплаты'])}"])
