@@ -127,6 +127,43 @@ def inspect_template(
         console.print("Запустите с --raw, чтобы увидеть все layout-имена в шаблоне.")
 
 
+@app.command(name="inspect-sales")
+def inspect_sales_cmd(
+    sources_folder_id: str = typer.Argument(..., help="ID папки с xlsx"),
+) -> None:
+    """Скачать Царь продажи и вывести уникальные значения ключевых колонок."""
+    from .aggregator import (
+        _list_xlsx, _find, _download_xlsx, _clean_transactions,
+        TX_REVENUE, TX_SEGMENT_TARIFF, TX_TARIFF,
+    )
+    creds = get_credentials()
+    drive = DriveClient(creds)
+    files = _list_xlsx(drive, sources_folder_id)
+    car_sales = _find(files, [r"Царь.*продаж", r"данные по продажам"])
+    if not car_sales:
+        console.print("[red]Не найден Царь-данные по продажам.xlsx[/red]")
+        raise typer.Exit(1)
+    console.print(f"Читаю {car_sales['name']} ...")
+    df = _download_xlsx(drive, car_sales["id"])
+    df = _clean_transactions(df)
+    console.print(f"Строк: {len(df)}; колонок: {len(df.columns)}")
+    console.print(f"\n[bold]Все колонки:[/bold]")
+    for c in df.columns:
+        console.print(f"  • {c}")
+    for col in (TX_SEGMENT_TARIFF, "Сбытовой сегмент", "Бизнес-юнит",
+                "Проект", "Сегмент плана", "Сегмент", "Продукт учета"):
+        if col in df.columns:
+            console.print(f"\n[bold]Уникальные «{col}» (с суммой выручки):[/bold]")
+            g = df.groupby(col)[TX_REVENUE].sum().sort_values(ascending=False).head(30)
+            for k, v in g.items():
+                console.print(f"  {v:>15,.0f} ₽   {k}")
+    if TX_TARIFF in df.columns:
+        console.print(f"\n[bold]Топ-30 тарифов:[/bold]")
+        g = df.groupby(TX_TARIFF)[TX_REVENUE].sum().sort_values(ascending=False).head(30)
+        for k, v in g.items():
+            console.print(f"  {v:>15,.0f} ₽   {k}")
+
+
 @app.command(name="aggregate")
 def aggregate_cmd(
     sources_folder_id: str = typer.Argument(..., help="ID папки с исходными xlsx"),
