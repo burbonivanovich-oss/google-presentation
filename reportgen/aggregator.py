@@ -318,10 +318,11 @@ def _top_tariffs_cmp(cur: pd.DataFrame, prev: pd.DataFrame, yoy: pd.DataFrame,
     yoy_g = yoy.groupby(TX_TARIFF)[TX_REVENUE].sum().rename(f"Q{out.cur_q} {out.cur_y - 1}") \
         if not yoy.empty else pd.Series(dtype=float, name=f"Q{out.cur_q} {out.cur_y - 1}")
     df = pd.concat([prev_g, yoy_g, cur_g], axis=1).fillna(0).reset_index()
+    import numpy as np
     df["Δ QoQ %"] = ((df[out.period_label] - df[out.prev_period_label]) /
-                     df[out.prev_period_label].replace(0, pd.NA) * 100).round(0)
+                     df[out.prev_period_label].replace(0, np.nan) * 100).round(0)
     df["Δ YoY %"] = ((df[out.period_label] - df[f"Q{out.cur_q} {out.cur_y - 1}"]) /
-                     df[f"Q{out.cur_q} {out.cur_y - 1}"].replace(0, pd.NA) * 100).round(0)
+                     df[f"Q{out.cur_q} {out.cur_y - 1}"].replace(0, np.nan) * 100).round(0)
     df = df.rename(columns={TX_TARIFF: "Тариф"})
     return df.sort_values(out.period_label, ascending=False).head(20)
 
