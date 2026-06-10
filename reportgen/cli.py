@@ -7,6 +7,8 @@ from rich.console import Console
 from rich.table import Table
 
 from .auth import get_credentials
+from .aggregator import aggregate
+from .aggregator_writer import write_aggregate
 from .composer import compose_report
 from .config import ReportConfig, SheetSource
 from .data_adapter import load_and_adapt
@@ -123,6 +125,39 @@ def inspect_template(
     if missing:
         console.print(f"[yellow]Не нашлось:[/yellow] {', '.join(missing)}")
         console.print("Запустите с --raw, чтобы увидеть все layout-имена в шаблоне.")
+
+
+@app.command(name="aggregate")
+def aggregate_cmd(
+    sources_folder_id: str = typer.Argument(..., help="ID папки с исходными xlsx"),
+    dest_folder_id: str = typer.Option(None, "--dest", help="Куда положить сводку (по умолчанию — та же папка)"),
+    period: str = typer.Option("Q1-2026", "--period"),
+    prev: str = typer.Option("Q4-2025", "--prev"),
+    name: str = typer.Option(None, "--name", help="Название сводки"),
+) -> None:
+    """Прочитать xlsx из папки источников, создать Google Sheet-сводку."""
+    creds = get_credentials()
+    drive = DriveClient(creds)
+    sheets = SheetsClient(creds)
+    console.print(f"Читаю источники из папки {sources_folder_id}...")
+    rd = aggregate(drive, sources_folder_id, period, prev)
+    pf = rd.plan_fact_quarter
+    if pf:
+        cur = pf["cur"]
+        console.print(
+            f"План-Факт {rd.period_label}: факт {cur['fact_rev']:,.0f} ₽ "
+            f"({pf['cur_pct']:.0f}% плана, {pf['qoq_delta']:+.1f}% к {rd.prev_period_label})"
+        )
+    for d in rd.directions.values():
+        console.print(f"  • {d.name}: {d.revenue_cur:,.0f} ₽ ({d.qty_cur} оплат)")
+
+    title = name or f"Сводка отчёта — {rd.period_label}"
+    ssid = write_aggregate(
+        sheets._svc, slides_drive := drive._drive,  # noqa: SLF001
+        rd, title=title,
+        parent_folder_id=dest_folder_id or sources_folder_id,
+    )
+    console.print(f"[green]Готово[/green] → https://docs.google.com/spreadsheets/d/{ssid}/edit")
 
 
 @app.command(name="design-test")
