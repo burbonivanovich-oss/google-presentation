@@ -9,9 +9,9 @@ from rich.table import Table
 from .auth import get_credentials
 from .composer import compose_report
 from .config import ReportConfig, SheetSource
+from .data_adapter import adapt
 from .design_test import build_design_test_deck
 from .drive import MIME_SHEET, MIME_SLIDES, DriveClient
-from .insights import qoq_changes, roas_below_benchmark, sigma_anomalies
 from .planner import build_plan
 from .sheets import SheetsClient
 from .slides import SlidesClient
@@ -160,27 +160,34 @@ def generate(
     console.print(f"[bold]Отчёт:[/bold] {cfg.name} ({previous_period} → {current_period})")
 
     # 1. Данные
-    data: dict = {}
+    raw = None
     for key, src in cfg.sources.items():
         try:
             sid = _resolve_spreadsheet(src, cfg.folder_id, drive)
-            data[key] = sheets.read_table(sid, src.range)
-            cols = ", ".join(data[key].columns[:10])
-            console.print(f"  • {key}: {data[key].shape[0]} строк, колонки: [{cols}]")
+            raw = sheets.read_table(sid, src.range)
+            cols = ", ".join(raw.columns[:10])
+            console.print(f"  • {key}: {raw.shape[0]} строк, колонки: [{cols}]")
+            break
         except Exception as e:  # noqa: BLE001
             console.print(f"  [yellow]пропуск {key}: {e}[/yellow]")
 
-    # 2. Инсайты
-    insights = _collect_insights(data, cfg, current_period, previous_period)
-    console.print(f"Найдено инсайтов: {len(insights)}")
-    data["_insights"] = insights
+    # 2. Агрегация: транзакционная → отчётные срезы
+    if raw is None or raw.empty:
+        console.print("[red]Нет данных для отчёта.[/red]")
+        return
+    rd = adapt(raw, current_period=current_period, previous_period=previous_period)
+    console.print(
+        f"Выручка {rd.period_label}: {rd.totals.get('revenue', 0):,.0f} ₽ "
+        f"({rd.totals.get('deals', 0)} оплат); "
+        f"{rd.prev_period_label}: {rd.totals_prev.get('revenue', 0):,.0f} ₽"
+    )
 
     # 3. План
     plan = build_plan(
         report_name=cfg.name,
         period=current_period,
         previous_period=previous_period,
-        data=data,
+        rd=rd,
     )
     console.print(f"План: {len(plan)} слайдов — " + ", ".join(s.role for s in plan))
 
@@ -204,35 +211,6 @@ def generate(
         parent_folder_id=cfg.folder_id,
     )
     console.print(f"[green]Готово[/green] → {slides.presentation_url(pres_id)}")
-
-
-def _collect_insights(data, cfg, current_period, previous_period):
-    insights = []
-    ch = data.get("channels")
-    if ch is None or ch.empty:
-        return insights
-    for metric in ("spend", "revenue", "leads"):
-        if metric not in ch.columns:
-            continue
-        ch[metric] = ch[metric].apply(_to_num)
-        insights += qoq_changes(
-            ch, entity_col="channel", metric_col=metric,
-            current_period=current_period, previous_period=previous_period,
-            threshold_pct=cfg.insights.qoq_threshold_pct,
-        )
-    cur = ch[ch.get("period") == current_period].copy() if "period" in ch.columns else ch.copy()
-    if cur.empty:
-        return insights
-    if "spend" in cur.columns:
-        insights += sigma_anomalies(
-            cur, entity_col="channel", metric_col="spend", sigma=cfg.insights.sigma
-        )
-    if "roas" in cur.columns:
-        cur["roas"] = cur["roas"].apply(_to_num)
-        insights += roas_below_benchmark(
-            cur, entity_col="channel", benchmark=cfg.insights.roas_benchmark
-        )
-    return insights
 
 
 def _resolve_spreadsheet(src: SheetSource, folder_id, drive: DriveClient) -> str:

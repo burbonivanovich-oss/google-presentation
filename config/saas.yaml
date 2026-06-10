@@ -9,7 +9,7 @@ presentation_template_name: "Контур Blue|шаблон|template"
 sources:
   channels:
     name_pattern: "saas|saaс|b2b|данные|data"
-    range: "A1:Z1000"
+    range: "Сырые данные!A1:AZ100000"
 
 insights:
   qoq_threshold_pct: 20.0
