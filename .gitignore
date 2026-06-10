@@ -6,9 +6,9 @@ venv/
 .env
 
 # Google credentials — NEVER commit
-secrets/service_account*.json
 secrets/client_secret*.json
 secrets/token*.json
+secrets/service_account*.json
 *.token.json
 
 # Build / output
