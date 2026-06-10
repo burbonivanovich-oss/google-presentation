@@ -55,6 +55,8 @@ def compose_report(
 
     for i, step in enumerate(plan):
         entry = index.get(step.role)
+        if not entry and step.role == "slide_table":
+            entry = index.get("slide_text")  # таблица идёт на тот же layout
         if not entry:
             log.warning("step %s skipped (нет эталона в шаблоне)", step.role)
             continue
@@ -64,10 +66,13 @@ def compose_report(
                 slides_svc, sheets_svc, drive_svc, pres_id, parent_folder_id,
                 i, step, entry,
             )
+        elif step.role == "slide_table":
+            new_id = _compose_table_step(slides_svc, pres_id, i, step, entry)
         else:
             new_id = _compose_text_step(slides_svc, pres_id, i, step, entry)
 
         if new_id:
+            _clean_decorations(slides_svc, pres_id, new_id, keep_ids=_kept_ids(new_id, entry))
             composed.append(ComposedStep(step, new_id))
             used_template_slide_ids.add(entry.slide.object_id)
 
@@ -122,7 +127,103 @@ def _compose_text_step(slides_svc, pres_id, idx, step, entry: TemplateEntry) -> 
             data[k] = step.data[k]
 
     reqs += fill_slide_by_roles(fake, data)
+    # Принудительно уменьшаем title-шрифт — у Контура заголовок шаблона
+    # 50pt, для коротких автогенерируемых тезисов это слишком крупно.
+    title_id = _safe_id(f"{new_slide_id}_title")
+    if "title" in entry.shape_by_role:
+        reqs.append({"updateTextStyle": {
+            "objectId": title_id,
+            "textRange": {"type": "ALL"},
+            "style": {"fontSize": {"magnitude": 24, "unit": "PT"}},
+            "fields": "fontSize",
+        }})
     _exec(slides_svc, pres_id, reqs)
+    return new_slide_id
+
+
+def _kept_ids(new_slide_id: str, entry: TemplateEntry) -> set[str]:
+    """ID shape'ов которые мы НЕ хотим удалять при чистке декораций.
+    Это title/body слоты (их новые ID) и сам слайд."""
+    out = {new_slide_id}
+    for role in entry.shape_by_role:
+        out.add(_safe_id(f"{new_slide_id}_{role}"))
+    return out
+
+
+def _clean_decorations(slides_svc, pres_id: str, slide_id: str, keep_ids: set[str]) -> None:
+    """Удаляет с слайда дефолтную картинку (PICTURE без текста в правой
+    половине) и служебную сноску «Не оставляй дефолтную иллюстрацию...»."""
+    _, slides_now = fetch_slides(slides_svc, pres_id)
+    target = next((s for s in slides_now if s.object_id == slide_id), None)
+    if not target:
+        return
+    reqs = []
+    for sh in target.shapes:
+        if sh.object_id in keep_ids:
+            continue
+        # 1) шаблонная сноска
+        if "Не оставляй" in sh.text or "дефолтную иллюстрацию" in sh.text:
+            reqs.append({"deleteObject": {"objectId": sh.object_id}})
+            continue
+        # 2) дефолтная картинка в правой половине (x > 5", обычно ~7.78)
+        if not sh.text and sh.x_in > 5.0 and sh.w_in > 2.0:
+            reqs.append({"deleteObject": {"objectId": sh.object_id}})
+            continue
+    if reqs:
+        _exec(slides_svc, pres_id, reqs)
+
+
+def _compose_table_step(slides_svc, pres_id, idx, step, entry: TemplateEntry) -> str:
+    """Заголовок + таблица из DataFrame в области body."""
+    new_slide_id = _compose_text_step(slides_svc, pres_id, idx, step, entry)
+    df = step.data.get("dataframe")
+    if df is None or df.empty:
+        return new_slide_id
+    # Удаляем body shape (там не нужны bullets), кладём таблицу
+    body_id = _safe_id(f"{new_slide_id}_body")
+    _exec(slides_svc, pres_id, [{"deleteObject": {"objectId": body_id}}])
+
+    rows = len(df) + 1
+    cols = len(df.columns)
+    table_id = _safe_id(f"{new_slide_id}_tbl")
+    reqs = [{"createTable": {
+        "objectId": table_id, "rows": rows, "columns": cols,
+        "elementProperties": _elem(new_slide_id, 0.64, 2.0, 12.05, 4.5),
+    }}]
+    _exec(slides_svc, pres_id, reqs)
+    fill = []
+    for c, header in enumerate(df.columns):
+        fill.append({"insertText": {"objectId": table_id,
+                                     "cellLocation": {"rowIndex": 0, "columnIndex": c},
+                                     "text": str(header)}})
+        fill.append({"updateTextStyle": {
+            "objectId": table_id,
+            "cellLocation": {"rowIndex": 0, "columnIndex": c},
+            "textRange": {"type": "ALL"},
+            "style": {"bold": True, "fontFamily": "Montserrat",
+                      "fontSize": _pt(11),
+                      "foregroundColor": _color(1, 1, 1)},
+            "fields": "bold,fontFamily,fontSize,foregroundColor"}})
+    fill.append({"updateTableCellProperties": {
+        "objectId": table_id,
+        "tableRange": {"location": {"rowIndex": 0, "columnIndex": 0},
+                       "rowSpan": 1, "columnSpan": cols},
+        "tableCellProperties": {
+            "tableCellBackgroundFill": {"solidFill": {"color": _color(0.21, 0.42, 0.95)}}},
+        "fields": "tableCellBackgroundFill.solidFill.color"}})
+    for r, row in enumerate(df.itertuples(index=False), start=1):
+        for c, val in enumerate(row):
+            s = "" if val is None else str(val)
+            fill.append({"insertText": {"objectId": table_id,
+                                         "cellLocation": {"rowIndex": r, "columnIndex": c},
+                                         "text": s}})
+            fill.append({"updateTextStyle": {
+                "objectId": table_id,
+                "cellLocation": {"rowIndex": r, "columnIndex": c},
+                "textRange": {"type": "ALL"},
+                "style": {"fontFamily": "Montserrat", "fontSize": _pt(10)},
+                "fields": "fontFamily,fontSize"}})
+    _exec(slides_svc, pres_id, fill)
     return new_slide_id
 
 

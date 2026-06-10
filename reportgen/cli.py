@@ -9,7 +9,7 @@ from rich.table import Table
 from .auth import get_credentials
 from .composer import compose_report
 from .config import ReportConfig, SheetSource
-from .data_adapter import adapt
+from .data_adapter import load_and_adapt
 from .design_test import build_design_test_deck
 from .drive import MIME_SHEET, MIME_SLIDES, DriveClient
 from .planner import build_plan
@@ -159,36 +159,23 @@ def generate(
 
     console.print(f"[bold]Отчёт:[/bold] {cfg.name} ({previous_period} → {current_period})")
 
-    # 1. Данные
-    raw = None
-    for key, src in cfg.sources.items():
-        try:
-            sid = _resolve_spreadsheet(src, cfg.folder_id, drive)
-            raw = sheets.read_table(sid, src.range)
-            cols = ", ".join(raw.columns[:10])
-            console.print(f"  • {key}: {raw.shape[0]} строк, колонки: [{cols}]")
-            break
-        except Exception as e:  # noqa: BLE001
-            console.print(f"  [yellow]пропуск {key}: {e}[/yellow]")
+    # 1. Данные — мультиисточник
+    rd = load_and_adapt(drive, sheets, cfg.folder_id,
+                        current_period=current_period,
+                        previous_period=previous_period)
+    console.print(f"Источники подгружены: "
+                  f"transactions={'✓' if rd.transactions is not None else '✗'}, "
+                  f"plan_fact={'✓' if rd.plan_fact is not None else '✗'}, "
+                  f"cac_cpl={'✓' if rd.cac_cpl is not None else '✗'}")
+    if rd.pf_quarter:
+        cur = rd.pf_quarter["cur"]
+        console.print(
+            f"План-Факт {rd.period_label}: факт {cur['fact_rev']:,.0f} ₽ / "
+            f"план {cur['plan_rev']:,.0f} ₽ ({rd.pf_quarter['cur_pct']:.0f}%)"
+        )
 
-    # 2. Агрегация: транзакционная → отчётные срезы
-    if raw is None or raw.empty:
-        console.print("[red]Нет данных для отчёта.[/red]")
-        return
-    rd = adapt(raw, current_period=current_period, previous_period=previous_period)
-    console.print(
-        f"Выручка {rd.period_label}: {rd.totals.get('revenue', 0):,.0f} ₽ "
-        f"({rd.totals.get('deals', 0)} оплат); "
-        f"{rd.prev_period_label}: {rd.totals_prev.get('revenue', 0):,.0f} ₽"
-    )
-
-    # 3. План
-    plan = build_plan(
-        report_name=cfg.name,
-        period=current_period,
-        previous_period=previous_period,
-        rd=rd,
-    )
+    # 2. План
+    plan = build_plan(report_name=cfg.name, rd=rd)
     console.print(f"План: {len(plan)} слайдов — " + ", ".join(s.role for s in plan))
 
     # 4. Композиция
