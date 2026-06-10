@@ -7,18 +7,18 @@ from rich.console import Console
 from rich.table import Table
 
 from .auth import get_credentials
+from .composer import compose_report
 from .config import ReportConfig, SheetSource
 from .design_test import build_design_test_deck
 from .drive import MIME_SHEET, MIME_SLIDES, DriveClient
 from .insights import qoq_changes, roas_below_benchmark, sigma_anomalies
+from .planner import build_plan
 from .sheets import SheetsClient
 from .slides import SlidesClient
+from .template_index import build_template_index, fetch_slides
 
 app = typer.Typer(help="Генератор квартальных Google Slides отчётов из Google Sheets.")
 console = Console()
-
-INSIGHT_HEADLINE = "{{insight_headline}}"
-INSIGHT_DETAIL = "{{insight_detail}}"
 
 
 @app.command()
@@ -34,7 +34,7 @@ def auth() -> None:
 
 @app.command(name="list-folder")
 def list_folder(folder_id: str = typer.Argument(..., help="ID папки в Drive")) -> None:
-    """Показать всё, что сервис-аккаунт видит в папке."""
+    """Показать всё, что доступно в папке."""
     creds = get_credentials()
     drive = DriveClient(creds)
     resp = (
@@ -69,7 +69,7 @@ def list_folder(folder_id: str = typer.Argument(..., help="ID папки в Driv
 
 @app.command(name="list-slides")
 def list_slides(presentation_id: str = typer.Argument(..., help="ID презентации")) -> None:
-    """Показать слайды и их превью — удобно, чтобы найти objectId insight-слайда."""
+    """Показать слайды и их превью."""
     creds = get_credentials()
     slides = SlidesClient(creds)
     table = Table(title=f"Слайды презентации {presentation_id}")
@@ -79,10 +79,44 @@ def list_slides(presentation_id: str = typer.Argument(..., help="ID презен
     console.print(table)
 
 
+@app.command(name="inspect-template")
+def inspect_template(
+    presentation_id: str = typer.Argument(..., help="ID шаблона презентации"),
+) -> None:
+    """Распознать какие layout-эталоны из шаблона будут использованы.
+
+    Выводит карту role → slide_id с матчем shape'ов. Чем больше ролей
+    распозналось — тем богаче получится отчёт.
+    """
+    creds = get_credentials()
+    slides = SlidesClient(creds)
+    _, slides_list = fetch_slides(slides._slides, presentation_id)  # noqa: SLF001
+    index = build_template_index(slides_list)
+
+    table = Table(title=f"Распознанные эталоны в {presentation_id}")
+    table.add_column("Роль", style="bold")
+    table.add_column("Layout")
+    table.add_column("Slide ID", style="dim")
+    table.add_column("Slots / Найдено")
+    for role, entry in index.items():
+        slots_total = sum(1 for _ in entry.shape_by_role) or 0
+        from .template_map import by_role
+        spec = by_role(role)
+        expected = len(spec.slots) if spec else 0
+        table.add_row(role, entry.slide.layout_name, entry.slide.object_id,
+                      f"{slots_total}/{expected}")
+    console.print(table)
+
+    from .template_map import LAYOUTS
+    missing = [s.role for s in LAYOUTS if s.role not in index]
+    if missing:
+        console.print(f"[yellow]Не нашлось:[/yellow] {', '.join(missing)}")
+
+
 @app.command(name="design-test")
 def design_test(
     folder_id: str | None = typer.Option(
-        None, "--folder", help="ID папки в Drive, куда положить тестовую презентацию"
+        None, "--folder", help="ID папки в Drive"
     ),
 ) -> None:
     """Создать презентацию-стенд для проверки дизайн-фиделити Slides API."""
@@ -91,13 +125,10 @@ def design_test(
     sheets = SheetsClient(creds)
     console.print("Собираю design-fidelity тест...")
     pres_id = build_design_test_deck(
-        slides._slides,  # noqa: SLF001
-        sheets._svc,  # noqa: SLF001
-        slides._drive,  # noqa: SLF001
+        slides._slides, sheets._svc, slides._drive,  # noqa: SLF001
         parent_folder_id=folder_id,
     )
     console.print(f"[green]Готово[/green] → {slides.presentation_url(pres_id)}")
-    console.print("Откройте в браузере и сравните блоки «Что просили» с фактом.")
 
 
 @app.command()
@@ -106,7 +137,8 @@ def generate(
     current_period: str = typer.Option(..., "--period", help="например Q1-2026"),
     previous_period: str = typer.Option(..., "--prev", help="например Q4-2025"),
 ) -> None:
-    """Сгенерировать презентацию по конфигу."""
+    """Сгенерировать отчёт автономно: planner выбирает слайды, composer
+    собирает их из шаблона Контура и заполняет данными."""
     cfg = ReportConfig.load(config_path)
     creds = get_credentials()
     sheets = SheetsClient(creds)
@@ -125,50 +157,34 @@ def generate(
         except Exception as e:  # noqa: BLE001
             console.print(f"  [yellow]пропуск {key}: {e}[/yellow]")
 
-    # 2. Инсайты (только из источника 'channels', если есть)
+    # 2. Инсайты
     insights = _collect_insights(data, cfg, current_period, previous_period)
     console.print(f"Найдено инсайтов: {len(insights)}")
+    data["_insights"] = insights
 
-    # 3. Копия шаблона
+    # 3. План
+    plan = build_plan(
+        report_name=cfg.name,
+        period=current_period,
+        previous_period=previous_period,
+        data=data,
+    )
+    console.print(f"План: {len(plan)} слайдов — " + ", ".join(s.role for s in plan))
+
+    # 4. Композиция
     template_id = cfg.presentation_template_id or drive.find_in_folder(
         cfg.folder_id, cfg.presentation_template_name, MIME_SLIDES
     )["id"]
     title = f"{cfg.name} — {current_period}"
-    pres_id = slides.copy_presentation(template_id, title, parent_folder_id=cfg.folder_id)
-    # parent_folder_id всё равно ставим — чтобы копия легла рядом с шаблоном
-    # в той же папке, а не в "Мой диск" корнем.
-    console.print(f"Копия шаблона: {slides.presentation_url(pres_id)}")
-
-    # 4. Insight-слайды
-    insight_slide_id = cfg.insight_slide_id or slides.find_slide_with_text(
-        pres_id, INSIGHT_HEADLINE
+    pres_id = compose_report(
+        slides_svc=slides._slides,  # noqa: SLF001
+        sheets_svc=sheets._svc,  # noqa: SLF001
+        drive_svc=slides._drive,  # noqa: SLF001
+        template_id=template_id,
+        plan=plan,
+        title=title,
+        parent_folder_id=cfg.folder_id,
     )
-    if insights and insight_slide_id:
-        for ins in insights:
-            new_id = slides.duplicate_slide(pres_id, insight_slide_id)
-            _replace_in_pages(
-                slides,
-                pres_id,
-                [new_id],
-                {INSIGHT_HEADLINE: ins.headline, INSIGHT_DETAIL: ins.detail},
-            )
-        slides.delete_slide(pres_id, insight_slide_id)
-    elif insights and not insight_slide_id:
-        console.print(
-            "[yellow]Инсайты найдены, но в шаблоне нет слайда с "
-            "{{insight_headline}} — пропускаю.[/yellow]"
-        )
-
-    # 5. Глобальные плейсхолдеры
-    mapping = {
-        "{{period}}": current_period,
-        "{{previous_period}}": previous_period,
-        "{{report_name}}": cfg.name,
-        **_kpi_placeholders(data, current_period),
-        **cfg.static_placeholders,
-    }
-    slides.replace_placeholders(pres_id, mapping)
-
     console.print(f"[green]Готово[/green] → {slides.presentation_url(pres_id)}")
 
 
@@ -182,11 +198,8 @@ def _collect_insights(data, cfg, current_period, previous_period):
             continue
         ch[metric] = ch[metric].apply(_to_num)
         insights += qoq_changes(
-            ch,
-            entity_col="channel",
-            metric_col=metric,
-            current_period=current_period,
-            previous_period=previous_period,
+            ch, entity_col="channel", metric_col=metric,
+            current_period=current_period, previous_period=previous_period,
             threshold_pct=cfg.insights.qoq_threshold_pct,
         )
     cur = ch[ch.get("period") == current_period].copy() if "period" in ch.columns else ch.copy()
@@ -204,40 +217,10 @@ def _collect_insights(data, cfg, current_period, previous_period):
     return insights
 
 
-def _kpi_placeholders(data, current_period) -> dict[str, str]:
-    """Простейшие KPI из источника 'channels': суммы за текущий период."""
-    ch = data.get("channels")
-    if ch is None or ch.empty:
-        return {}
-    cur = ch[ch.get("period") == current_period] if "period" in ch.columns else ch
-    out: dict[str, str] = {}
-    for col in ("spend", "revenue", "leads"):
-        if col in cur.columns:
-            total = cur[col].apply(_to_num).sum()
-            out[f"{{{{total_{col}}}}}"] = _fmt(total)
-    return out
-
-
 def _resolve_spreadsheet(src: SheetSource, folder_id, drive: DriveClient) -> str:
     if src.spreadsheet_id:
         return src.spreadsheet_id
     return drive.find_in_folder(folder_id, src.name_pattern, MIME_SHEET)["id"]
-
-
-def _replace_in_pages(slides: SlidesClient, presentation_id, page_ids, mapping):
-    requests = [
-        {
-            "replaceAllText": {
-                "containsText": {"text": k, "matchCase": True},
-                "replaceText": v,
-                "pageObjectIds": page_ids,
-            }
-        }
-        for k, v in mapping.items()
-    ]
-    slides._slides.presentations().batchUpdate(  # noqa: SLF001
-        presentationId=presentation_id, body={"requests": requests}
-    ).execute()
 
 
 def _to_num(x):
@@ -245,16 +228,6 @@ def _to_num(x):
         return float(str(x).replace(" ", "").replace(",", ".").replace("\xa0", ""))
     except (ValueError, TypeError):
         return float("nan")
-
-
-def _fmt(x: float) -> str:
-    if x != x:  # NaN
-        return "—"
-    if abs(x) >= 1_000_000:
-        return f"{x/1_000_000:.1f}M"
-    if abs(x) >= 1_000:
-        return f"{x/1_000:.0f}K"
-    return f"{x:.0f}"
 
 
 if __name__ == "__main__":
