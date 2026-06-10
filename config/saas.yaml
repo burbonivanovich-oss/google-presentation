@@ -8,7 +8,7 @@ presentation_template_name: "Контур Blue|шаблон|template"
 
 sources:
   channels:
-    name_pattern: "saas|saaс|b2b"
+    name_pattern: "saas|saaс|b2b|данные|data"
     range: "A1:Z1000"
 
 insights:

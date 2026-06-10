@@ -8,7 +8,7 @@ presentation_template_name: "Контур Blue|шаблон|template"
 
 sources:
   channels:
-    name_pattern: "общепит|horeca"
+    name_pattern: "общепит|horeca|данные|data"
     range: "A1:Z1000"
 
 insights:

@@ -29,6 +29,10 @@ class LayoutSpec:
     role: str  # внутреннее имя типа: cover, section, kpi_2, kpi_6 и т.д.
     layout_name_patterns: list[str]  # совпадение по displayName layout
     slots: list[ShapeSlot] = field(default_factory=list)
+    # fallback: характерные подстроки в тексте слайда — для случаев, когда
+    # имя layout после конвертации .pptx → Slides стало "Custom Layout".
+    # Слайд матчится, если содержит ВСЕ подстроки из списка.
+    content_signatures: list[str] = field(default_factory=list)
 
 
 # Все типы слайдов, которые planner может использовать.
@@ -36,7 +40,8 @@ class LayoutSpec:
 LAYOUTS: list[LayoutSpec] = [
     LayoutSpec(
         role="cover",
-        layout_name_patterns=["Титул 1"],
+        layout_name_patterns=["Титул 1", "Title", "Cover"],
+        content_signatures=["Тема выступления"],
         slots=[
             ShapeSlot("title", 0.65, 0.64, "Тема выступления"),
             ShapeSlot("name", 0.65, 4.61, "Имя Фамилия"),
@@ -46,7 +51,8 @@ LAYOUTS: list[LayoutSpec] = [
     ),
     LayoutSpec(
         role="section",
-        layout_name_patterns=["Отбивка"],
+        layout_name_patterns=["Отбивка", "Section"],
+        content_signatures=["Чтобы начать оформлять"],
         slots=[
             ShapeSlot("title", 0.64, 0.64, "Гайдлайн"),
             ShapeSlot("body", 1.04, 3.24, "Чтобы начать"),
@@ -55,6 +61,7 @@ LAYOUTS: list[LayoutSpec] = [
     LayoutSpec(
         role="kpi_2",
         layout_name_patterns=["2 цифры крупно"],
+        content_signatures=["Две цифры", "крупно"],
         slots=[
             ShapeSlot("title", 0.64, 0.64, "цифры"),
             ShapeSlot("value_1", 0.64, 3.15),
@@ -66,6 +73,7 @@ LAYOUTS: list[LayoutSpec] = [
     LayoutSpec(
         role="kpi_6",
         layout_name_patterns=["6 важных цифр"],  # в шаблоне иногда с trailing space
+        content_signatures=["16,8%", "26,4"],  # уникальные значения на этом слайде
         slots=[
             # сетка 3 колонки × 2 ряда; в каждой ячейке value сверху, desc снизу
             ShapeSlot("value_1", 0.64, 1.51),
@@ -85,6 +93,7 @@ LAYOUTS: list[LayoutSpec] = [
     LayoutSpec(
         role="big_quote",
         layout_name_patterns=["Крупный тезис"],
+        content_signatures=["Выручка группы компаний", "млрд ₽"],
         slots=[
             ShapeSlot("preface", 0.64, 0.64, "Выручка"),
             ShapeSlot("value", 3.47, 3.96, "26,4"),  # 220pt
@@ -94,6 +103,7 @@ LAYOUTS: list[LayoutSpec] = [
     LayoutSpec(
         role="facts_3",
         layout_name_patterns=["3 факта"],
+        content_signatures=["Три факта"],
         slots=[
             ShapeSlot("title", 0.64, 0.64, "факта"),
             ShapeSlot("num_1", 0.64, 3.81),
@@ -107,6 +117,7 @@ LAYOUTS: list[LayoutSpec] = [
     LayoutSpec(
         role="cards_3",
         layout_name_patterns=["3 карточки факта"],
+        content_signatures=["Текст на карточках", "Подзаголовок"],
         slots=[
             ShapeSlot("title", 0.64, 0.64),
             ShapeSlot("num_1", 0.96, 2.77),
@@ -123,6 +134,7 @@ LAYOUTS: list[LayoutSpec] = [
     LayoutSpec(
         role="text_section",
         layout_name_patterns=["Заголовок в 1 строку + текст"],
+        content_signatures=["Короткий", "поясняющий"],
         slots=[
             ShapeSlot("title", 0.64, 0.64, "Короткий"),
             ShapeSlot("body", 0.64, 2.77, "поясняющий"),
@@ -130,7 +142,8 @@ LAYOUTS: list[LayoutSpec] = [
     ),
     LayoutSpec(
         role="final",
-        layout_name_patterns=["Финальный слайд_1", "Финальный слайд"],
+        layout_name_patterns=["Финальный слайд_1", "Финальный слайд", "Final"],
+        content_signatures=["Благодарю", "за внимание"],
         slots=[
             ShapeSlot("title", 0.64, 0.64, "Благодарю"),
             ShapeSlot("name", 0.64, 4.56, "Имя Фамилия"),
@@ -141,7 +154,7 @@ LAYOUTS: list[LayoutSpec] = [
     # как «самый пустой» layout (если будет — иначе любой с минимумом контента).
     LayoutSpec(
         role="blank",
-        layout_name_patterns=["Текстовый"],
+        layout_name_patterns=["Текстовый", "Blank", "Пустой"],
         slots=[],
     ),
 ]

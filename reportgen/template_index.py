@@ -132,10 +132,20 @@ def build_template_index(slides: list[SlideRef]) -> dict[str, TemplateEntry]:
 
 
 def _first_slide_for_layout(slides: list[SlideRef], spec: LayoutSpec) -> SlideRef | None:
+    # 1) Сначала по имени layout (если есть и оно осмысленное)
     patterns = [p.strip().lower() for p in spec.layout_name_patterns]
     for s in slides:
         name = s.layout_name.strip().lower()
-        if any(p in name or name in p for p in patterns):
+        if name and any(p in name or name in p for p in patterns):
+            return s
+    # 2) Fallback: по сигнатурам в текстовом содержимом слайда.
+    # Подходит, если все подстроки присутствуют в каком-то shape слайда.
+    sigs = [s.lower() for s in spec.content_signatures]
+    if not sigs:
+        return None
+    for s in slides:
+        all_text = " | ".join(sh.text for sh in s.shapes).lower()
+        if all(sig in all_text for sig in sigs):
             return s
     return None
 

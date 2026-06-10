@@ -82,17 +82,28 @@ def list_slides(presentation_id: str = typer.Argument(..., help="ID презен
 @app.command(name="inspect-template")
 def inspect_template(
     presentation_id: str = typer.Argument(..., help="ID шаблона презентации"),
+    raw: bool = typer.Option(False, "--raw", help="Печать всех слайдов с layout-именами"),
 ) -> None:
-    """Распознать какие layout-эталоны из шаблона будут использованы.
-
-    Выводит карту role → slide_id с матчем shape'ов. Чем больше ролей
-    распозналось — тем богаче получится отчёт.
-    """
+    """Распознать какие layout-эталоны из шаблона будут использованы."""
     creds = get_credentials()
     slides = SlidesClient(creds)
     _, slides_list = fetch_slides(slides._slides, presentation_id)  # noqa: SLF001
-    index = build_template_index(slides_list)
 
+    if raw:
+        rt = Table(title=f"Все слайды шаблона ({len(slides_list)})")
+        rt.add_column("#"); rt.add_column("Layout"); rt.add_column("Slide ID", style="dim")
+        rt.add_column("1-й shape (превью)")
+        for i, s in enumerate(slides_list, 1):
+            preview = ""
+            for sh in s.shapes:
+                if sh.text:
+                    preview = sh.text.replace("\n", " ")[:60]
+                    break
+            rt.add_row(str(i), s.layout_name or "(пусто)", s.object_id, preview)
+        console.print(rt)
+        return
+
+    index = build_template_index(slides_list)
     table = Table(title=f"Распознанные эталоны в {presentation_id}")
     table.add_column("Роль", style="bold")
     table.add_column("Layout")
@@ -111,6 +122,7 @@ def inspect_template(
     missing = [s.role for s in LAYOUTS if s.role not in index]
     if missing:
         console.print(f"[yellow]Не нашлось:[/yellow] {', '.join(missing)}")
+        console.print("Запустите с --raw, чтобы увидеть все layout-имена в шаблоне.")
 
 
 @app.command(name="design-test")
@@ -153,7 +165,8 @@ def generate(
         try:
             sid = _resolve_spreadsheet(src, cfg.folder_id, drive)
             data[key] = sheets.read_table(sid, src.range)
-            console.print(f"  • {key}: {data[key].shape[0]} строк")
+            cols = ", ".join(data[key].columns[:10])
+            console.print(f"  • {key}: {data[key].shape[0]} строк, колонки: [{cols}]")
         except Exception as e:  # noqa: BLE001
             console.print(f"  [yellow]пропуск {key}: {e}[/yellow]")
 
@@ -175,6 +188,11 @@ def generate(
     template_id = cfg.presentation_template_id or drive.find_in_folder(
         cfg.folder_id, cfg.presentation_template_name, MIME_SLIDES
     )["id"]
+    console.print(f"Шаблон: {template_id}")
+    _, slides_list = fetch_slides(slides._slides, template_id)  # noqa: SLF001
+    index_preview = build_template_index(slides_list)
+    console.print(f"Распознано ролей в шаблоне: {len(index_preview)} — "
+                  + ", ".join(index_preview.keys()))
     title = f"{cfg.name} — {current_period}"
     pres_id = compose_report(
         slides_svc=slides._slides,  # noqa: SLF001

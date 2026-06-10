@@ -13,7 +13,7 @@ presentation_template_name: "Контур Blue|шаблон|template"
 sources:
   channels:
     # Любая таблица с "розниц" или "retail" в имени.
-    name_pattern: "розниц|retail"
+    name_pattern: "розниц|retail|данные|data"
     # Подкорректируйте имя листа, если он не первый. Можно "Лист1!A1:Z1000".
     range: "A1:Z1000"
 
