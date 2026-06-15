@@ -17,6 +17,7 @@
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 
 import pandas as pd
@@ -27,13 +28,24 @@ from .aggregator import (
 )
 from .drive import DriveClient
 
-# Кандидаты на продуктовый столбец и ключевые слова направлений
+PROJECT_COL = "Проект"
+
+# Кандидаты на продуктовый столбец (fallback, если нет разбивки по проектам)
 PRODUCT_COLS = ["Продукт учета", "Продукт учёта", "Продукт", "Макропродукт",
-                "Бизнес-юнит", "Сегмент плана групп", "Сегмент плана", "Проект",
+                "Бизнес-юнит", "Сегмент плана групп", "Сегмент плана",
                 "Направление", "Сегмент Маркет"]
 
-MARKET_KEYS = ["контур.маркет", "маркет"]
-OFD_KEYS = ["контур.офд", "офд"]
+# Разбивка по проектам (подсказана пользователем):
+#   ОФД    — п453 (и дочерний п45302)
+#   Маркет — п470 и п47101 (он же мог писаться как п47001)
+PRODUCTS = {
+    "Маркет": {"projects": ["п470", "п47101", "п47001"], "keys": ["контур.маркет", "маркет"]},
+    "ОФД": {"projects": ["п453", "п45302"], "keys": ["контур.офд", "офд"]},
+}
+
+
+def _norm_proj(s) -> str:
+    return re.sub(r"[^0-9a-zа-я]", "", str(s).strip().lower())
 
 
 @dataclass
@@ -79,24 +91,40 @@ def run_forecast(drive: DriveClient, folder_id: str, year: int = 2026,
     raw = _download_xlsx(drive, svod["id"])
     df = _clean_plan_fact(raw)
 
-    diagnostics = _diagnose(df)
+    diagnostics = _diagnose(df, year, completed_through)
 
     out = {"diagnostics": diagnostics, "products": {}}
-    for name, keys in (("Маркет", MARKET_KEYS), ("ОФД", OFD_KEYS)):
-        pf = _forecast_product(df, name, keys, year, completed_through)
+    for name, cfg in PRODUCTS.items():
+        pf = _forecast_product(df, name, cfg, year, completed_through)
         out["products"][name] = pf
     return out
 
 
-def _diagnose(df: pd.DataFrame) -> dict:
-    """Где в плане-факте есть Маркет/ОФД: по каждому кандидат-столбцу
-    показываем уникальные значения с суммой плановой выручки."""
-    info = {"columns": list(df.columns), "by_col": {}}
+def _diagnose(df: pd.DataFrame, year: int, completed: int) -> dict:
+    """Полный список проектов с планом 2026, фактом YTD 2026 и фактом 2025,
+    плюс fallback-разрезы (где встречаются Маркет/ОФД по словам)."""
+    info = {"columns": list(df.columns), "projects": [], "by_col": {}}
+
+    if PROJECT_COL in df.columns and PF_REV_PLAN in df.columns:
+        m2026 = df["_year"] == year
+        m2025 = df["_year"] == (year - 1)
+        ytd = m2026 & (df["_month"] <= completed)
+        g_plan = df[m2026].groupby(PROJECT_COL)[PF_REV_PLAN].sum()
+        g_ytd = df[ytd].groupby(PROJECT_COL)[PF_REV_FACT].sum()
+        g_2025 = df[m2025].groupby(PROJECT_COL)[PF_REV_FACT].sum()
+        projects = sorted(set(g_plan.index) | set(g_2025.index),
+                          key=lambda k: -float(g_plan.get(k, 0)))
+        for p in projects:
+            info["projects"].append((
+                str(p),
+                float(g_plan.get(p, 0)),
+                float(g_ytd.get(p, 0)),
+                float(g_2025.get(p, 0)),
+            ))
+
     for col in PRODUCT_COLS:
-        if col not in df.columns:
+        if col not in df.columns or PF_REV_PLAN not in df.columns:
             continue
-        if PF_REV_PLAN not in df.columns:
-            break
         g = df.groupby(col)[PF_REV_PLAN].sum().sort_values(ascending=False)
         rows = [(str(k), float(v)) for k, v in g.items()
                 if any(t in str(k).lower() for t in ("маркет", "офд", "контур"))]
@@ -105,12 +133,21 @@ def _diagnose(df: pd.DataFrame) -> dict:
     return info
 
 
-def _pick_filter(df: pd.DataFrame, keys: list[str]) -> tuple[pd.Series | None, str]:
-    """Выбираем лучший столбец+значения, где совокупный плановый объём
-    под ключевые слова максимален."""
-    best_mask = None
-    best_desc = ""
-    best_total = -1.0
+def _pick_filter(df: pd.DataFrame, cfg: dict) -> tuple[pd.Series | None, str]:
+    """Сначала пытаемся отфильтровать по проектам (точное совпадение или
+    префикс кода), иначе — по ключевым словам в продуктовых столбцах."""
+    # 1) по проектам
+    if PROJECT_COL in df.columns and cfg.get("projects"):
+        codes = [_norm_proj(c) for c in cfg["projects"]]
+        norm = df[PROJECT_COL].apply(_norm_proj)
+        mask = norm.apply(lambda s: any(s == c or s.startswith(c) for c in codes))
+        if mask.any():
+            matched = sorted(df.loc[mask, PROJECT_COL].astype(str).unique())
+            return mask, f"{PROJECT_COL} ∈ {{{', '.join(matched)}}}"
+
+    # 2) по ключевым словам
+    keys = cfg.get("keys", [])
+    best_mask, best_desc, best_total = None, "", -1.0
     for col in PRODUCT_COLS:
         if col not in df.columns or PF_REV_PLAN not in df.columns:
             continue
@@ -118,10 +155,8 @@ def _pick_filter(df: pd.DataFrame, keys: list[str]) -> tuple[pd.Series | None, s
         mask = col_vals.apply(lambda s: any(k in s for k in keys))
         if not mask.any():
             continue
-        total = df.loc[mask, PF_REV_PLAN].sum()
-        # предпочитаем продуктовые столбцы (точное "контур.маркет/офд")
-        exact_bonus = 1e12 if col.lower().startswith("продукт") else 0
-        score = float(total) + exact_bonus
+        total = float(df.loc[mask, PF_REV_PLAN].sum())
+        score = total + (1e12 if col.lower().startswith("продукт") else 0)
         if score > best_total:
             best_total = score
             best_mask = mask
@@ -130,10 +165,10 @@ def _pick_filter(df: pd.DataFrame, keys: list[str]) -> tuple[pd.Series | None, s
     return best_mask, best_desc
 
 
-def _forecast_product(df: pd.DataFrame, name: str, keys: list[str],
+def _forecast_product(df: pd.DataFrame, name: str, cfg: dict,
                       year: int, completed: int) -> ProductForecast:
     pf = ProductForecast(name=name)
-    mask, desc = _pick_filter(df, keys)
+    mask, desc = _pick_filter(df, cfg)
     pf.filter_desc = desc or "(не найдено)"
     if mask is None:
         return pf
@@ -184,11 +219,19 @@ def print_report(result: dict, console) -> None:
     diag = result["diagnostics"]
     console.print("\n[bold]Столбцы Царь свода:[/bold]")
     console.print(", ".join(diag["columns"]))
-    console.print("\n[bold]Где встречаются Маркет/ОФД/Контур (плановая выручка):[/bold]")
-    for col, rows in diag["by_col"].items():
-        console.print(f"\n  [cyan]{col}[/cyan]:")
-        for k, v in rows[:15]:
-            console.print(f"    {v:>16,.0f} ₽   {k}")
+
+    if diag.get("projects"):
+        console.print("\n[bold]Проекты (план 2026 / факт YTD 2026 / факт 2025), ₽:[/bold]")
+        console.print(f"  {'Проект':<14}{'План 2026':>16}{'Факт YTD':>16}{'Факт 2025':>16}")
+        for p, plan, ytd, y2025 in diag["projects"]:
+            console.print(f"  {p:<14}{plan:>16,.0f}{ytd:>16,.0f}{y2025:>16,.0f}")
+
+    if diag.get("by_col"):
+        console.print("\n[bold]Где встречаются Маркет/ОФД/Контур по словам (план):[/bold]")
+        for col, rows in diag["by_col"].items():
+            console.print(f"\n  [cyan]{col}[/cyan]:")
+            for k, v in rows[:15]:
+                console.print(f"    {v:>16,.0f} ₽   {k}")
 
     for name, pf in result["products"].items():
         console.print(f"\n[bold green]══ {name} ══[/bold green]")
