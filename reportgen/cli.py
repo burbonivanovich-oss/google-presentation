@@ -141,6 +141,32 @@ def forecast_cmd(
     print_report(result, console)
 
 
+@app.command(name="forecast-xlsx")
+def forecast_xlsx_cmd(
+    sources_folder_id: str = typer.Argument(..., help="ID папки с xlsx"),
+    dest_folder_id: str = typer.Option(None, "--dest", help="Куда положить .xlsx (по умолч. та же папка)"),
+    completed: int = typer.Option(5, "--completed", help="Последний завершённый месяц 2026"),
+    name: str = typer.Option(None, "--name", help="Имя файла"),
+) -> None:
+    """Собрать Excel-прогноз 2026 по Маркету и ОФД и загрузить в Drive."""
+    from .forecast_excel import build_forecast_data, write_excel, upload_xlsx
+    creds = get_credentials()
+    drive = DriveClient(creds)
+    console.print("Читаю Царь свод + data(15), строю модели...")
+    data = build_forecast_data(drive, sources_folder_id, completed)
+    for prod, p in data["products"].items():
+        fc = p["fc_rev"]
+        console.print(
+            f"  {prod}: план {fc.annual_plan:,.0f} ₽ · факт YTD {fc.ytd_fact:,.0f} "
+            f"({fc.fulfil_ytd:.0f}%) · прогноз года {fc.year_base:,.0f} "
+            f"→ {fc.pct_plan_base:.0f}% плана (коридор {fc.pct_plan_low:.0f}–{fc.pct_plan_high:.0f}%)"
+        )
+    content = write_excel(data)
+    fname = name or f"Прогноз 2026 — Маркет и ОФД (факт по мес {completed}).xlsx"
+    link = upload_xlsx(drive, dest_folder_id or sources_folder_id, fname, content)
+    console.print(f"[green]Готово[/green] → {link}")
+
+
 @app.command(name="inspect-sales")
 def inspect_sales_cmd(
     sources_folder_id: str = typer.Argument(..., help="ID папки с xlsx"),
