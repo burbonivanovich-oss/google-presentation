@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Отчёт по продажам — Q1 2026 · Контур</title>
+<style>
+  :root{
+    --orange:#F28C0D; --orange-d:#d97a00;
+    --ink:#1d2430; --slate:#5E6670; --line:#e7e9ee;
+    --bg:#f4f5f7; --card:#ffffff;
+    --blue:#1A66D9; --green:#2f9e44; --red:#e03131;
+    --light:#f0f0f0;
+    --r:14px;
+  }
+  *{box-sizing:border-box; margin:0; padding:0}
+  html,body{height:100%}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
+    background:var(--bg); color:var(--ink);
+    display:flex; align-items:center; justify-content:center;
+    min-height:100vh; padding:24px;
+  }
+  /* DECK */
+  .deck{width:min(1180px,96vw)}
+  .slide{
+    position:relative; aspect-ratio:16/9; background:var(--card);
+    border-radius:var(--r); box-shadow:0 18px 50px rgba(20,30,50,.14);
+    padding:48px 56px; display:none; overflow:hidden;
+    flex-direction:column;
+  }
+  .slide.active{display:flex}
+  .slide::before{content:""; position:absolute; left:0; top:0; bottom:0; width:8px; background:var(--orange)}
+  .kicker{font-size:13px; letter-spacing:.14em; text-transform:uppercase; color:var(--orange-d); font-weight:700}
+  h1{font-size:46px; line-height:1.07; font-weight:800; letter-spacing:-.02em; margin-top:10px}
+  h2{font-size:30px; font-weight:800; letter-spacing:-.01em; margin:2px 0 18px}
+  .sub{color:var(--slate); font-size:16px; margin-top:14px; max-width:70ch; line-height:1.5}
+  .foot{position:absolute; left:56px; right:56px; bottom:20px; display:flex; justify-content:space-between;
+        font-size:12px; color:var(--slate); border-top:1px solid var(--line); padding-top:10px}
+  .badge{display:inline-block; font-size:11px; font-weight:700; letter-spacing:.04em; text-transform:uppercase;
+         padding:4px 9px; border-radius:999px; vertical-align:middle}
+  .badge.est{background:#fff4e2; color:var(--orange-d); border:1px solid #ffd79a}
+  .badge.real{background:#e9f6ec; color:var(--green); border:1px solid #b6e0c0}
+
+  /* metric cards */
+  .cards{display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-top:6px}
+  .card{background:var(--light); border-radius:12px; padding:18px 18px 16px; border:1px solid var(--line)}
+  .card .lab{font-size:13px; color:var(--slate); font-weight:600}
+  .card .val{font-size:30px; font-weight:800; letter-spacing:-.02em; margin-top:6px}
+  .card .delta{font-size:13px; font-weight:700; margin-top:4px}
+  .up{color:var(--green)} .down{color:var(--red)} .flat{color:var(--slate)}
+
+  /* two-col */
+  .grid2{display:grid; grid-template-columns:1.1fr .9fr; gap:32px; flex:1; min-height:0}
+  .panel-title{font-size:14px; font-weight:700; color:var(--slate); text-transform:uppercase; letter-spacing:.06em; margin-bottom:12px}
+
+  /* bar chart */
+  .bars{display:flex; flex-direction:column; gap:14px}
+  .bar-row{display:grid; grid-template-columns:96px 1fr; align-items:center; gap:12px}
+  .bar-row .name{font-size:14px; color:var(--slate); font-weight:600}
+  .track{position:relative; height:30px; background:#eef0f3; border-radius:7px; overflow:hidden}
+  .fill{position:absolute; left:0; top:0; bottom:0; border-radius:7px; display:flex; align-items:center;
+        padding:0 10px; color:#fff; font-size:13px; font-weight:700; white-space:nowrap}
+  .fill.plan{background:#c9ced6}
+  .fill.fact{background:var(--orange)}
+  .pairbar{display:flex; flex-direction:column; gap:4px}
+  .pct{font-size:13px; font-weight:800}
+
+  /* tables */
+  table{width:100%; border-collapse:collapse; font-size:13.5px}
+  th,td{padding:8px 10px; text-align:right; border-bottom:1px solid var(--line)}
+  th:first-child,td:first-child{text-align:left}
+  thead th{background:var(--orange); color:#fff; font-weight:700; font-size:12.5px; text-transform:uppercase; letter-spacing:.03em}
+  thead th:first-child{border-top-left-radius:8px} thead th:last-child{border-top-right-radius:8px}
+  tbody tr:nth-child(even){background:#faf6ef}
+  td.tname{font-weight:600}
+  .num{font-variant-numeric:tabular-nums}
+
+  .splitcols{columns:2; column-gap:34px}
+  .splitcols table{break-inside:avoid}
+
+  ul.notes{list-style:none; display:flex; flex-direction:column; gap:12px; margin-top:8px}
+  ul.notes li{padding-left:22px; position:relative; font-size:15px; line-height:1.45}
+  ul.notes li::before{content:""; position:absolute; left:0; top:8px; width:9px; height:9px; border-radius:3px; background:var(--orange)}
+  ul.notes li.warn::before{background:var(--red)}
+
+  /* title slide */
+  .title-slide{justify-content:center}
+  .title-slide h1{font-size:62px}
+  .logo{display:flex; align-items:center; gap:12px; font-weight:800; font-size:22px; letter-spacing:-.01em}
+  .logo .dot{width:30px; height:30px; border-radius:9px; background:var(--orange)}
+  .meta-row{display:flex; gap:36px; margin-top:34px}
+  .meta-row .m .k{font-size:13px; color:var(--slate); font-weight:600}
+  .meta-row .m .v{font-size:22px; font-weight:800; margin-top:3px}
+
+  /* nav */
+  .nav{position:fixed; bottom:18px; left:50%; transform:translateX(-50%);
+       display:flex; gap:10px; align-items:center; background:#fff;
+       border:1px solid var(--line); border-radius:999px; padding:7px 10px;
+       box-shadow:0 8px 24px rgba(20,30,50,.16); z-index:50}
+  .nav button{border:0; background:var(--ink); color:#fff; width:34px; height:34px; border-radius:50%;
+              font-size:16px; cursor:pointer; display:flex; align-items:center; justify-content:center}
+  .nav button:disabled{opacity:.3; cursor:default}
+  .nav .counter{font-size:13px; font-weight:700; color:var(--slate); min-width:54px; text-align:center}
+
+  .ofd-mini{display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-top:14px}
+  .ofd-mini .mc{background:var(--light); border:1px solid var(--line); border-radius:10px; padding:12px}
+  .ofd-mini .mc .k{font-size:12px; color:var(--slate)} .ofd-mini .mc .v{font-size:18px; font-weight:800; margin-top:3px}
+
+  @media print{
+    body{background:#fff; padding:0}
+    .nav{display:none}
+    .deck{width:100%}
+    .slide{display:flex !important; page-break-after:always; box-shadow:none; border-radius:0;
+           aspect-ratio:auto; height:100vh}
+  }
+</style>
+</head>
+<body>
+<div class="deck" id="deck">
+
+  <!-- 1 · TITLE -->
+  <section class="slide title-slide active">
+    <div class="logo"><span class="dot"></span>Контур</div>
+    <div class="kicker" style="margin-top:30px">Квартальный отчёт по продажам</div>
+    <h1>Итоги Q1&nbsp;2026</h1>
+    <div class="sub">Розница · Общепит · Кассы · ОФД · Маркет · Контекстная реклама.<br>
+      Источник — Царь свод, Царь продажи, выгрузки рекламных кампаний (data&nbsp;15–17).</div>
+    <div class="meta-row">
+      <div class="m"><div class="k">Период</div><div class="v">Q1 2026</div></div>
+      <div class="m"><div class="k">Сравнение</div><div class="v">Q4 2025 · Q1 2025</div></div>
+      <div class="m"><div class="k">Выручка факт</div><div class="v">68,2 млн ₽</div></div>
+      <div class="m"><div class="k">Выполнение плана</div><div class="v">92%</div></div>
+    </div>
+    <div class="foot"><span>Контур · продажи</span><span>сформировано 13.06.2026</span></div>
+  </section>
+
+  <!-- 2 · ОБЗОР -->
+  <section class="slide">
+    <div class="kicker">Обзор</div>
+    <h2>Ключевые метрики квартала</h2>
+    <div class="cards">
+      <div class="card"><div class="lab">Выручка факт</div><div class="val">68,2 млн ₽</div>
+        <div class="delta down">92% от плана 74,6 млн</div></div>
+      <div class="card"><div class="lab">Кол-во оплат</div><div class="val">6 859</div>
+        <div class="delta flat">план 6 773 · 101%</div></div>
+      <div class="card"><div class="lab">Средний чек</div><div class="val">9,9 тыс ₽</div>
+        <div class="delta flat">факт / кол-во оплат</div></div>
+      <div class="card"><div class="lab">Недобор к плану</div><div class="val">−6,3 млн ₽</div>
+        <div class="delta down">в основном март (85%)</div></div>
+    </div>
+
+    <div class="grid2" style="margin-top:28px">
+      <div>
+        <div class="panel-title">План vs факт по месяцам, млн ₽</div>
+        <div class="bars">
+          <div class="bar-row"><div class="name">Январь</div>
+            <div class="pairbar">
+              <div class="track"><div class="fill plan" style="width:81%">план 22,3</div></div>
+              <div class="track"><div class="fill fact" style="width:77%">факт 21,1 · <span class="pct">95%</span></div></div>
+            </div></div>
+          <div class="bar-row"><div class="name">Февраль</div>
+            <div class="pairbar">
+              <div class="track"><div class="fill plan" style="width:90%">план 24,8</div></div>
+              <div class="track"><div class="fill fact" style="width:86%">факт 23,7 · <span class="pct">96%</span></div></div>
+            </div></div>
+          <div class="bar-row"><div class="name">Март</div>
+            <div class="pairbar">
+              <div class="track"><div class="fill plan" style="width:100%">план 27,5</div></div>
+              <div class="track"><div class="fill fact" style="width:85%">факт 23,4 · <span class="pct" style="color:var(--red)">85%</span></div></div>
+            </div></div>
+        </div>
+      </div>
+      <div>
+        <div class="panel-title">Выручка по направлениям, Q1 2026</div>
+        <table>
+          <thead><tr><th>Направление</th><th>Выручка</th><th>Доля</th></tr></thead>
+          <tbody>
+            <tr><td class="tname">Розница</td><td class="num">~32,5 млн</td><td class="num">48%</td></tr>
+            <tr><td class="tname">Кассы</td><td class="num">~22,2 млн</td><td class="num">33%</td></tr>
+            <tr><td class="tname">Общепит</td><td class="num">~12,8 млн</td><td class="num">19%</td></tr>
+            <tr><td class="tname">в т.ч. ОФД (продукт)</td><td class="num">11,7 млн</td><td class="num">17%</td></tr>
+          </tbody>
+        </table>
+        <div class="sub" style="font-size:13px; margin-top:10px">
+          <span class="badge est">оценка</span> Розница/Кассы/Общепит — пропорция по «Бизнес-юнит»;
+          точные числа после пересчёта. ОФД — продуктовый срез, пересекается с направлениями.
+        </div>
+      </div>
+    </div>
+    <div class="foot"><span>Источник: Царь свод (план-факт) + Царь продажи</span><span>2 / 11</span></div>
+  </section>
+
+  <!-- 3 · ДИНАМИКА -->
+  <section class="slide">
+    <div class="kicker">Помесячная динамика</div>
+    <h2>Бизнес-юнит: план и факт по месяцам</h2>
+    <div class="grid2">
+      <div>
+        <div class="panel-title">Выполнение плана, %</div>
+        <div class="bars">
+          <div class="bar-row"><div class="name">Январь</div>
+            <div class="track"><div class="fill fact" style="width:95%">95%</div></div></div>
+          <div class="bar-row"><div class="name">Февраль</div>
+            <div class="track"><div class="fill fact" style="width:96%">96%</div></div></div>
+          <div class="bar-row"><div class="name">Март</div>
+            <div class="track"><div class="fill fact" style="width:85%; background:var(--red)">85%</div></div></div>
+        </div>
+        <ul class="notes" style="margin-top:26px">
+          <li>Январь–февраль держим ~95–96% плана — стабильный темп.</li>
+          <li class="warn">Март — провал до 85%: при росте плана до 27,5 млн факт остался на уровне февраля (23,4 млн).</li>
+          <li>Кол-во оплат в феврале выше плана (2 510 при 2 222) — выручку тянет вниз средний чек.</li>
+        </ul>
+      </div>
+      <div>
+        <div class="panel-title">Цифры, млн ₽</div>
+        <table>
+          <thead><tr><th>Месяц</th><th>План</th><th>Факт</th><th>%</th><th>Оплат</th></tr></thead>
+          <tbody>
+            <tr><td class="tname">Январь</td><td class="num">22,33</td><td class="num">21,12</td><td class="num up">95</td><td class="num">2 123</td></tr>
+            <tr><td class="tname">Февраль</td><td class="num">24,75</td><td class="num">23,69</td><td class="num up">96</td><td class="num">2 510</td></tr>
+            <tr><td class="tname">Март</td><td class="num">27,47</td><td class="num">23,42</td><td class="num down">85</td><td class="num">2 226</td></tr>
+            <tr style="font-weight:800; background:#fff4e2"><td>Итого</td><td class="num">74,56</td><td class="num">68,23</td><td class="num">92</td><td class="num">6 859</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="foot"><span>Источник: Царь свод все разрезы</span><span>3 / 11</span></div>
+  </section>
+
+  <!-- 4 · РОЗНИЦА -->
+  <section class="slide">
+    <div class="kicker">Направление</div>
+    <h2>Розница <span class="badge est">оценка по БЮ</span></h2>
+    <div class="cards">
+      <div class="card"><div class="lab">Выручка Q1 2026</div><div class="val">~32,5 млн ₽</div><div class="delta flat">48% бизнес-юнита</div></div>
+      <div class="card"><div class="lab">Доля направления</div><div class="val">48%</div><div class="delta flat">крупнейшее направление</div></div>
+      <div class="card"><div class="lab">Топ-тариф</div><div class="val">Оптим. Розница</div><div class="delta up">6,66 млн · +9% QoQ</div></div>
+      <div class="card"><div class="lab">Драйвер</div><div class="val">Все госсистемы</div><div class="delta down">3,47 млн · −13% YoY</div></div>
+    </div>
+    <div style="margin-top:24px">
+      <div class="panel-title">Тарифы розницы в Q1 2026 (из топ-20), млн ₽</div>
+      <table>
+        <thead><tr><th>Тариф</th><th>Q1 2025</th><th>Q4 2025</th><th>Q1 2026</th><th>QoQ</th><th>YoY</th></tr></thead>
+        <tbody>
+          <tr><td class="tname">Оптимальный Розница</td><td class="num">7,13</td><td class="num">6,13</td><td class="num">6,66</td><td class="num up">+9%</td><td class="num down">−7%</td></tr>
+          <tr><td class="tname">Все госсистемы</td><td class="num">3,97</td><td class="num">3,80</td><td class="num">3,47</td><td class="num down">−9%</td><td class="num down">−13%</td></tr>
+          <tr><td class="tname">Базовый Розница</td><td class="num">1,89</td><td class="num">1,59</td><td class="num">1,41</td><td class="num down">−11%</td><td class="num down">−25%</td></tr>
+          <tr><td class="tname">Премиум Розница</td><td class="num">1,64</td><td class="num">1,13</td><td class="num">0,95</td><td class="num down">−16%</td><td class="num down">−42%</td></tr>
+          <tr><td class="tname">Маркировка</td><td class="num">1,39</td><td class="num">3,26</td><td class="num">1,86</td><td class="num down">−43%</td><td class="num up">+34%</td></tr>
+        </tbody>
+      </table>
+      <div class="sub" style="font-size:13px"><span class="badge est">оценка</span> агрегат направления будет уточнён после пересчёта по «Бизнес-юнит = Госсистемы для розницы»; тарифы — реальные из Царь продажи.</div>
+    </div>
+    <div class="foot"><span>Источник: Царь продажи · Бизнес-юнит = Госсистемы для розницы</span><span>4 / 11</span></div>
+  </section>
+
+  <!-- 5 · ОБЩЕПИТ -->
+  <section class="slide">
+    <div class="kicker">Направление</div>
+    <h2>Общепит <span class="badge est">оценка по БЮ</span></h2>
+    <div class="cards">
+      <div class="card"><div class="lab">Выручка Q1 2026</div><div class="val">~12,8 млн ₽</div><div class="delta flat">19% бизнес-юнита</div></div>
+      <div class="card"><div class="lab">Доля направления</div><div class="val">19%</div><div class="delta flat">третье по объёму</div></div>
+      <div class="card"><div class="lab">Топ-тариф</div><div class="val">Оптим. Общепит</div><div class="delta up">1,29 млн · +44% QoQ</div></div>
+      <div class="card"><div class="lab">Динамика</div><div class="val">растёт</div><div class="delta up">+8% YoY по топ-тарифу</div></div>
+    </div>
+    <div style="margin-top:24px">
+      <div class="panel-title">Тарифы общепита в Q1 2026 (из топ-20), млн ₽</div>
+      <table>
+        <thead><tr><th>Тариф</th><th>Q1 2025</th><th>Q4 2025</th><th>Q1 2026</th><th>QoQ</th><th>YoY</th></tr></thead>
+        <tbody>
+          <tr><td class="tname">Оптимальный Общепит</td><td class="num">1,20</td><td class="num">0,89</td><td class="num">1,29</td><td class="num up">+44%</td><td class="num up">+8%</td></tr>
+          <tr><td class="tname">КМ модификатор ЕГАИС</td><td class="num">1,17</td><td class="num">0,99</td><td class="num">1,09</td><td class="num up">+10%</td><td class="num down">−7%</td></tr>
+          <tr><td class="tname">Базовый Общепит</td><td class="num">—</td><td class="num">—</td><td class="num">0,49</td><td class="num flat">·</td><td class="num flat">·</td></tr>
+        </tbody>
+      </table>
+      <ul class="notes" style="margin-top:18px">
+        <li>Общепит — единственное направление с положительной QoQ-динамикой по ключевым тарифам.</li>
+        <li>Оптимальный Общепит восстановился после слабого Q4 2025 (+44% к кварталу).</li>
+      </ul>
+    </div>
+    <div class="foot"><span>Источник: Царь продажи · Бизнес-юнит = Госсистемы для общепита</span><span>5 / 11</span></div>
+  </section>
+
+  <!-- 6 · КАССЫ -->
+  <section class="slide">
+    <div class="kicker">Направление</div>
+    <h2>Кассы <span class="badge est">оценка по БЮ</span></h2>
+    <div class="cards">
+      <div class="card"><div class="lab">Выручка Q1 2026</div><div class="val">~22,2 млн ₽</div><div class="delta flat">33% бизнес-юнита</div></div>
+      <div class="card"><div class="lab">Доля направления</div><div class="val">33%</div><div class="delta flat">второе по объёму</div></div>
+      <div class="card"><div class="lab">Топ-тариф</div><div class="val">Терминал</div><div class="delta up">2,75 млн · +29% QoQ</div></div>
+      <div class="card"><div class="lab">Растущее</div><div class="val">Перерег. ККТ</div><div class="delta up">1,56 млн · +48% YoY</div></div>
+    </div>
+    <div style="margin-top:24px">
+      <div class="panel-title">Тарифы касс в Q1 2026 (из топ-20), млн ₽</div>
+      <table>
+        <thead><tr><th>Тариф</th><th>Q1 2025</th><th>Q4 2025</th><th>Q1 2026</th><th>QoQ</th><th>YoY</th></tr></thead>
+        <tbody>
+          <tr><td class="tname">Терминал</td><td class="num">2,63</td><td class="num">2,14</td><td class="num">2,75</td><td class="num up">+29%</td><td class="num up">+5%</td></tr>
+          <tr><td class="tname">Модификатор Маркировка</td><td class="num">2,46</td><td class="num">2,30</td><td class="num">2,55</td><td class="num up">+11%</td><td class="num up">+4%</td></tr>
+          <tr><td class="tname">Лицензия Атол ИТС</td><td class="num">1,23</td><td class="num">1,39</td><td class="num">1,59</td><td class="num up">+14%</td><td class="num up">+29%</td></tr>
+          <tr><td class="tname">Перерегистрация ККТ</td><td class="num">1,05</td><td class="num">1,30</td><td class="num">1,56</td><td class="num up">+20%</td><td class="num up">+48%</td></tr>
+          <tr><td class="tname">Атол ИТС</td><td class="num">1,48</td><td class="num">1,00</td><td class="num">1,24</td><td class="num up">+24%</td><td class="num down">−17%</td></tr>
+          <tr><td class="tname">Сканер</td><td class="num">1,21</td><td class="num">1,37</td><td class="num">1,16</td><td class="num down">−15%</td><td class="num down">−5%</td></tr>
+        </tbody>
+      </table>
+      <div class="sub" style="font-size:13px">Кассы — самое «здоровое» направление: 4 из 6 топ-тарифов растут и QoQ, и YoY. Драйвер — оборудование (Терминал, Атол) и обязательная перерегистрация ККТ.</div>
+    </div>
+    <div class="foot"><span>Источник: Царь продажи · Бизнес-юнит = Кассовики</span><span>6 / 11</span></div>
+  </section>
+
+  <!-- 7 · ОФД -->
+  <section class="slide">
+    <div class="kicker">Направление · продуктовый срез</div>
+    <h2>ОФД <span class="badge real">факт</span></h2>
+    <div class="cards">
+      <div class="card"><div class="lab">Выручка Q1 2026</div><div class="val">11,69 млн ₽</div><div class="delta up">+4,2% к Q4 2025</div></div>
+      <div class="card"><div class="lab">YoY</div><div class="val">−4,9%</div><div class="delta down">было 12,28 млн в Q1 2025</div></div>
+      <div class="card"><div class="lab">Кол-во оплат</div><div class="val">2 122</div><div class="delta up">+49 к Q4 (2 073)</div></div>
+      <div class="card"><div class="lab">Средний чек</div><div class="val">5,5 тыс ₽</div><div class="delta flat">11,69 млн / 2 122</div></div>
+    </div>
+    <div class="grid2" style="margin-top:24px">
+      <div>
+        <div class="panel-title">Выручка по месяцам, млн ₽</div>
+        <div class="bars">
+          <div class="bar-row"><div class="name">Январь</div><div class="track"><div class="fill fact" style="width:100%">3,94</div></div></div>
+          <div class="bar-row"><div class="name">Февраль</div><div class="track"><div class="fill fact" style="width:98.7%">3,89</div></div></div>
+          <div class="bar-row"><div class="name">Март</div><div class="track"><div class="fill fact" style="width:97.7%">3,85</div></div></div>
+        </div>
+        <ul class="notes" style="margin-top:22px">
+          <li>Внутри квартала ровно — ~3,9 млн/мес, лёгкое затухание к марту.</li>
+          <li class="warn">Год к году минус 4,9% — ОФД под давлением (отток / переход на конкурентов).</li>
+        </ul>
+      </div>
+      <div>
+        <div class="panel-title">Топ тарифов ОФД, млн ₽</div>
+        <table>
+          <thead><tr><th>Тариф</th><th>Q1 2026</th></tr></thead>
+          <tbody>
+            <tr><td class="tname">ОФД-36</td><td class="num">3,93</td></tr>
+            <tr><td class="tname">ОФД-15</td><td class="num">3,73</td></tr>
+            <tr><td class="tname">ОФД-13</td><td class="num">3,38</td></tr>
+            <tr><td class="tname">ОФД-24</td><td class="num">0,46</td></tr>
+            <tr><td class="tname">Код активации ОФД-13</td><td class="num">0,10</td></tr>
+            <tr><td class="tname">ОФД-18</td><td class="num">0,07</td></tr>
+            <tr><td class="tname">Прочие ОФД</td><td class="num">0,03</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="foot"><span>Источник: Царь продажи · Тариф содержит «ОФД» (продуктовый срез)</span><span>7 / 11</span></div>
+  </section>
+
+  <!-- 8 · ТОП ТАРИФОВ -->
+  <section class="slide">
+    <div class="kicker">Тарифы</div>
+    <h2>Топ-20 тарифов: QoQ и YoY <span class="badge real">факт</span></h2>
+    <div style="flex:1; overflow:hidden; font-size:12.5px">
+      <table>
+        <thead><tr><th>Тариф</th><th>Q1 2025</th><th>Q4 2025</th><th>Q1 2026</th><th>QoQ</th><th>YoY</th></tr></thead>
+        <tbody>
+          <tr><td class="tname">Прочие</td><td class="num">26,63</td><td class="num">21,26</td><td class="num">14,96</td><td class="num down">−30%</td><td class="num down">−44%</td></tr>
+          <tr><td class="tname">Оптимальный Розница</td><td class="num">7,13</td><td class="num">6,13</td><td class="num">6,66</td><td class="num up">+9%</td><td class="num down">−7%</td></tr>
+          <tr><td class="tname">ОФД-36</td><td class="num">4,77</td><td class="num">4,79</td><td class="num">3,93</td><td class="num down">−18%</td><td class="num down">−18%</td></tr>
+          <tr><td class="tname">ОФД-15</td><td class="num">4,17</td><td class="num">3,00</td><td class="num">3,73</td><td class="num up">+24%</td><td class="num down">−11%</td></tr>
+          <tr><td class="tname">Все госсистемы</td><td class="num">3,97</td><td class="num">3,80</td><td class="num">3,47</td><td class="num down">−9%</td><td class="num down">−13%</td></tr>
+          <tr><td class="tname">ОФД-13</td><td class="num">2,72</td><td class="num">2,73</td><td class="num">3,38</td><td class="num up">+24%</td><td class="num up">+24%</td></tr>
+          <tr><td class="tname">Настройка Контур.Маркет</td><td class="num">1,59</td><td class="num">1,45</td><td class="num">2,93</td><td class="num up">+102%</td><td class="num up">+85%</td></tr>
+          <tr><td class="tname">Терминал</td><td class="num">2,63</td><td class="num">2,14</td><td class="num">2,75</td><td class="num up">+29%</td><td class="num up">+5%</td></tr>
+          <tr><td class="tname">Модификатор Маркировка</td><td class="num">2,46</td><td class="num">2,30</td><td class="num">2,55</td><td class="num up">+11%</td><td class="num up">+4%</td></tr>
+          <tr><td class="tname">Маркировка</td><td class="num">1,39</td><td class="num">3,26</td><td class="num">1,86</td><td class="num down">−43%</td><td class="num up">+34%</td></tr>
+          <tr><td class="tname">Лицензия Атол ИТС</td><td class="num">1,23</td><td class="num">1,39</td><td class="num">1,59</td><td class="num up">+14%</td><td class="num up">+29%</td></tr>
+          <tr><td class="tname">Перерегистрация ККТ</td><td class="num">1,05</td><td class="num">1,30</td><td class="num">1,56</td><td class="num up">+20%</td><td class="num up">+48%</td></tr>
+          <tr><td class="tname">Базовый Розница</td><td class="num">1,89</td><td class="num">1,59</td><td class="num">1,41</td><td class="num down">−11%</td><td class="num down">−25%</td></tr>
+          <tr><td class="tname">Оптимальный Общепит</td><td class="num">1,20</td><td class="num">0,89</td><td class="num">1,29</td><td class="num up">+44%</td><td class="num up">+8%</td></tr>
+          <tr><td class="tname">Атол ИТС</td><td class="num">1,48</td><td class="num">1,00</td><td class="num">1,24</td><td class="num up">+24%</td><td class="num down">−17%</td></tr>
+          <tr><td class="tname">Сертификат</td><td class="num">0,86</td><td class="num">0,66</td><td class="num">1,23</td><td class="num up">+88%</td><td class="num up">+43%</td></tr>
+          <tr><td class="tname">Сканер</td><td class="num">1,21</td><td class="num">1,37</td><td class="num">1,16</td><td class="num down">−15%</td><td class="num down">−5%</td></tr>
+          <tr><td class="tname">КМ модификатор ЕГАИС</td><td class="num">1,17</td><td class="num">0,99</td><td class="num">1,09</td><td class="num up">+10%</td><td class="num down">−7%</td></tr>
+          <tr><td class="tname">Премиум Розница</td><td class="num">1,64</td><td class="num">1,13</td><td class="num">0,95</td><td class="num down">−16%</td><td class="num down">−42%</td></tr>
+          <tr><td class="tname">Базовый Услуги</td><td class="num">1,04</td><td class="num">0,67</td><td class="num">0,86</td><td class="num up">+29%</td><td class="num down">−18%</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="foot"><span>Источник: Царь продажи · группировка по тарифу, млн ₽</span><span>8 / 11</span></div>
+  </section>
+
+  <!-- 9 · МАРКЕТ -->
+  <section class="slide">
+    <div class="kicker">Маркет</div>
+    <h2>Маркет — рекламные продажи по тарифам</h2>
+    <div class="sub" style="margin-top:0; margin-bottom:16px">Топ-20 тарифов, привлечённых через продукт «Маркет», тыс ₽. Совокупно ~1,3 млн ₽ за период кампаний.</div>
+    <div class="splitcols" style="flex:1; font-size:12.5px">
+      <table>
+        <thead><tr><th>Тариф</th><th>тыс ₽</th></tr></thead>
+        <tbody>
+          <tr><td class="tname">Прочие</td><td class="num">315</td></tr>
+          <tr><td class="tname">Оптимальный Розница</td><td class="num">253</td></tr>
+          <tr><td class="tname">Все госсистемы</td><td class="num">98</td></tr>
+          <tr><td class="tname">Модификатор Маркировка</td><td class="num">81</td></tr>
+          <tr><td class="tname">Настройка Гос.систем в Маркете</td><td class="num">47</td></tr>
+          <tr><td class="tname">Терминал</td><td class="num">43</td></tr>
+          <tr><td class="tname">Оптимальный Общепит</td><td class="num">42</td></tr>
+          <tr><td class="tname">КМ модификатор ЕГАИС</td><td class="num">42</td></tr>
+          <tr><td class="tname">ОФД-15</td><td class="num">40</td></tr>
+          <tr><td class="tname">Модификатор Меркурий</td><td class="num">37</td></tr>
+        </tbody>
+      </table>
+      <table>
+        <thead><tr><th>Тариф</th><th>тыс ₽</th></tr></thead>
+        <tbody>
+          <tr><td class="tname">ОФД-13</td><td class="num">34</td></tr>
+          <tr><td class="tname">Настройка Контур.Маркет</td><td class="num">32</td></tr>
+          <tr><td class="tname">Премиум Розница</td><td class="num">30</td></tr>
+          <tr><td class="tname">Базовый Розница</td><td class="num">29</td></tr>
+          <tr><td class="tname">Сканер</td><td class="num">28</td></tr>
+          <tr><td class="tname">ЕГАИС</td><td class="num">24</td></tr>
+          <tr><td class="tname">ОФД-36</td><td class="num">20</td></tr>
+          <tr><td class="tname">Система лояльности</td><td class="num">19</td></tr>
+          <tr><td class="tname">Базовый Общепит</td><td class="num">19</td></tr>
+          <tr><td class="tname">Обучение Контур.Маркет</td><td class="num">17</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="foot"><span>Источник: data (16).xlsx · рекламные продажи продукта Маркет</span><span>9 / 11</span></div>
+  </section>
+
+  <!-- 10 · КОНТЕКСТ РЕКЛАМА -->
+  <section class="slide">
+    <div class="kicker">Контекстная реклама</div>
+    <h2>Привлечение по продуктам, помесячно</h2>
+    <div class="sub" style="margin-top:0; margin-bottom:14px">Выручка (млн/тыс ₽) и количество оплат по месяцам кампаний. Три продукта: ОФД, Маркет, Бандл «Маркет+ОФД».</div>
+    <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:24px; flex:1">
+      <div>
+        <div class="panel-title">ОФД</div>
+        <table>
+          <thead><tr><th>М</th><th>₽</th><th>опл.</th></tr></thead>
+          <tbody>
+            <tr><td>1</td><td class="num">525т</td><td class="num">54</td></tr>
+            <tr><td>2</td><td class="num">616т</td><td class="num">65</td></tr>
+            <tr><td>3</td><td class="num">522т</td><td class="num">50</td></tr>
+            <tr><td>4</td><td class="num">696т</td><td class="num">52</td></tr>
+            <tr><td>5</td><td class="num">384т</td><td class="num">37</td></tr>
+            <tr><td>6</td><td class="num">70т</td><td class="num">8</td></tr>
+            <tr style="font-weight:800; background:#fff4e2"><td>Σ</td><td class="num">2,8м</td><td class="num">266</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div>
+        <div class="panel-title">Маркет</div>
+        <table>
+          <thead><tr><th>М</th><th>₽</th><th>опл.</th></tr></thead>
+          <tbody>
+            <tr><td>1</td><td class="num">759т</td><td class="num">63</td></tr>
+            <tr><td>2</td><td class="num">1,03м</td><td class="num">95</td></tr>
+            <tr><td>3</td><td class="num">1,12м</td><td class="num">80</td></tr>
+            <tr><td>4</td><td class="num">457т</td><td class="num">36</td></tr>
+            <tr><td>5</td><td class="num">393т</td><td class="num">28</td></tr>
+            <tr><td>6</td><td class="num">119т</td><td class="num">13</td></tr>
+            <tr style="font-weight:800; background:#fff4e2"><td>Σ</td><td class="num">3,9м</td><td class="num">315</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div>
+        <div class="panel-title">Бандл Маркет+ОФД</div>
+        <table>
+          <thead><tr><th>М</th><th>₽</th><th>опл.</th></tr></thead>
+          <tbody>
+            <tr><td>1</td><td class="num">421т</td><td class="num">52</td></tr>
+            <tr><td>2</td><td class="num">360т</td><td class="num">46</td></tr>
+            <tr><td>3</td><td class="num">593т</td><td class="num">60</td></tr>
+            <tr><td>4</td><td class="num">345т</td><td class="num">43</td></tr>
+            <tr><td>5</td><td class="num">540т</td><td class="num">68</td></tr>
+            <tr><td>6</td><td class="num">34т</td><td class="num">1</td></tr>
+            <tr style="font-weight:800; background:#fff4e2"><td>Σ</td><td class="num">2,3м</td><td class="num">270</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="sub" style="font-size:13px"><span class="badge est">требует данных</span> CPL / CPO / показы / клики — на скриншотах кампаний, OCR ненадёжен; нужна выгрузка из рекламных кабинетов.</div>
+    <div class="foot"><span>Источник: data (15) ОФД · data (16) Маркет · data (17) Бандл</span><span>10 / 11</span></div>
+  </section>
+
+  <!-- 11 · ИСТОЧНИКИ -->
+  <section class="slide">
+    <div class="kicker">Методология</div>
+    <h2>Источники и что осталось вручную</h2>
+    <div class="grid2">
+      <div>
+        <div class="panel-title">Откуда что берётся</div>
+        <table style="font-size:12.5px">
+          <thead><tr><th>Блок</th><th>Источник · фильтр</th></tr></thead>
+          <tbody>
+            <tr><td class="tname">Обзор</td><td style="text-align:left">Царь свод (план) + Царь продажи (факт)</td></tr>
+            <tr><td class="tname">Розница</td><td style="text-align:left">Бизнес-юнит = Госсистемы для розницы</td></tr>
+            <tr><td class="tname">Общепит</td><td style="text-align:left">Бизнес-юнит = Госсистемы для общепита</td></tr>
+            <tr><td class="tname">Кассы</td><td style="text-align:left">Бизнес-юнит = Кассовики</td></tr>
+            <tr><td class="tname">ОФД</td><td style="text-align:left">Тариф содержит «ОФД» (продуктовый срез)</td></tr>
+            <tr><td class="tname">Маркет</td><td style="text-align:left">data (16) — рекламные продажи</td></tr>
+            <tr><td class="tname">Контекст</td><td style="text-align:left">data (15/16/17) — помесячно</td></tr>
+            <tr><td class="tname">Топ-20</td><td style="text-align:left">Царь продажи · группировка по тарифу</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div>
+        <div class="panel-title">Не автоматизировано — нужно от команды</div>
+        <ul class="notes">
+          <li class="warn">Тексты «где отстаём» и причины — комментарий аналитика.</li>
+          <li class="warn">CPL / CPO / показы / клики — выгрузка из рекл. кабинетов (сейчас только PNG).</li>
+          <li class="warn">Проекты и задачи на Q2 — план команды, не из данных.</li>
+          <li class="warn">Поисковый спрос Wordstat — отдельная выгрузка.</li>
+          <li>Розница / Общепит / Кассы — поквартальные суммы уточнятся после пересчёта (сейчас оценка по доле БЮ).</li>
+        </ul>
+      </div>
+    </div>
+    <div class="foot"><span>Контур · сводка собрана автоматически из 5 xlsx</span><span>11 / 11</span></div>
+  </section>
+
+</div>
+
+<div class="nav">
+  <button id="prev">‹</button>
+  <span class="counter" id="counter">1 / 11</span>
+  <button id="next">›</button>
+</div>
+
+<script>
+  const slides=[...document.querySelectorAll('.slide')];
+  let i=0;
+  const counter=document.getElementById('counter');
+  const prev=document.getElementById('prev'), next=document.getElementById('next');
+  function show(n){
+    i=Math.max(0,Math.min(slides.length-1,n));
+    slides.forEach((s,k)=>s.classList.toggle('active',k===i));
+    counter.textContent=(i+1)+' / '+slides.length;
+    prev.disabled=i===0; next.disabled=i===slides.length-1;
+  }
+  prev.onclick=()=>show(i-1); next.onclick=()=>show(i+1);
+  document.addEventListener('keydown',e=>{
+    if(e.key==='ArrowRight'||e.key==='PageDown'||e.key===' ') show(i+1);
+    if(e.key==='ArrowLeft'||e.key==='PageUp') show(i-1);
+    if(e.key==='Home') show(0); if(e.key==='End') show(slides.length-1);
+  });
+  show(0);
+</script>
+</body>
+</html>

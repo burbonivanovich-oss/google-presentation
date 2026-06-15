@@ -41,12 +41,12 @@ PF_REV_FACT = "Оплата факт"
 PF_SEGMENT = "Сегмент плана"
 PF_PROJECT = "Проект"
 
-# Маппинг направлений на фильтр по «Сегментный тариф»
+# Маппинг направлений на фильтр по «Бизнес-юнит»
 DIRECTIONS = {
     "Розница": ["Госсистемы для розницы"],
     "Общепит": ["Госсистемы для общепита"],
     "Кассы": ["Кассовики"],
-    # ОФД определяем не по сегменту, а по продукту в Тарифе (содержит "ОФД")
+    # ОФД — продуктовый срез по названию тарифа (пересекается с другими БЮ)
     "ОФД": None,
 }
 
@@ -140,6 +140,15 @@ def aggregate(
         out.top_tariffs = _top_tariffs_cmp(cur_tx, prev_tx, yoy_tx, out)
         out.by_region = _agg_top(cur_tx, TX_REGION, "Регион", 10)
         out.by_online = _agg_top(cur_tx, TX_ONLINE, "Канал", 0)
+
+        # Дополняем общий обзор данными из tx (план-факт не имеет прошлых периодов)
+        out.plan_fact_quarter.setdefault("cur", {})
+        out.plan_fact_quarter["tx_cur_rev"] = float(cur_tx[TX_REVENUE].sum())
+        out.plan_fact_quarter["tx_prev_rev"] = float(prev_tx[TX_REVENUE].sum())
+        out.plan_fact_quarter["tx_yoy_rev"] = float(yoy_tx[TX_REVENUE].sum())
+        out.plan_fact_quarter["tx_cur_qty"] = int(cur_tx[TX_QTY].sum()) if TX_QTY in cur_tx.columns else len(cur_tx)
+        out.plan_fact_quarter["tx_prev_qty"] = int(prev_tx[TX_QTY].sum()) if TX_QTY in prev_tx.columns else len(prev_tx)
+        out.plan_fact_quarter["tx_yoy_qty"] = int(yoy_tx[TX_QTY].sum()) if TX_QTY in yoy_tx.columns else len(yoy_tx)
 
         # По направлениям
         for name, segs in DIRECTIONS.items():
@@ -332,6 +341,8 @@ def _summarize_direction(cur: pd.DataFrame, prev: pd.DataFrame, yoy: pd.DataFram
                          out: AggregateResult) -> DirectionSummary:
     if name == "ОФД":
         m = lambda df: df[df[TX_TARIFF].astype(str).str.contains("ОФД", na=False)]  # noqa: E731
+    elif segments and TX_BUSINESS_UNIT in cur.columns:
+        m = lambda df: df[df[TX_BUSINESS_UNIT].isin(segments)]  # noqa: E731
     elif segments:
         m = lambda df: df[df[TX_SEGMENT_TARIFF].isin(segments)]  # noqa: E731
     else:
