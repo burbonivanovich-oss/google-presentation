@@ -127,6 +127,20 @@ def inspect_template(
         console.print("Запустите с --raw, чтобы увидеть все layout-имена в шаблоне.")
 
 
+@app.command(name="forecast")
+def forecast_cmd(
+    sources_folder_id: str = typer.Argument(..., help="ID папки с xlsx"),
+    completed: int = typer.Option(5, "--completed", help="Последний завершённый месяц 2026"),
+) -> None:
+    """Прогноз выполнения плана 2026 по Маркету и ОФД из Царь свода."""
+    from .forecaster import run_forecast, print_report
+    creds = get_credentials()
+    drive = DriveClient(creds)
+    console.print("Читаю Царь свод и считаю прогноз...")
+    result = run_forecast(drive, sources_folder_id, year=2026, completed_through=completed)
+    print_report(result, console)
+
+
 @app.command(name="inspect-sales")
 def inspect_sales_cmd(
     sources_folder_id: str = typer.Argument(..., help="ID папки с xlsx"),
