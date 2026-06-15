@@ -48,6 +48,14 @@ def _norm_proj(s) -> str:
     return re.sub(r"[^0-9a-zа-я]", "", str(s).strip().lower())
 
 
+def _proj_code(s) -> str:
+    """Ведущий код проекта: 'п470 Маркет Розница' → 'п470', 'п45302' → 'п45302'.
+    Так Маркет ловится даже если к коду приписано имя, а п45302 (техника/ФН/
+    услуги внедрения) не путается с п453."""
+    m = re.match(r"\s*(п?\d+)", str(s).strip().lower())
+    return m.group(1) if m else _norm_proj(s)
+
+
 @dataclass
 class MonthCell:
     month: int
@@ -138,9 +146,8 @@ def _pick_filter(df: pd.DataFrame, cfg: dict) -> tuple[pd.Series | None, str]:
     префикс кода), иначе — по ключевым словам в продуктовых столбцах."""
     # 1) по проектам
     if PROJECT_COL in df.columns and cfg.get("projects"):
-        codes = {_norm_proj(c) for c in cfg["projects"]}
-        norm = df[PROJECT_COL].apply(_norm_proj)
-        mask = norm.apply(lambda s: s in codes)  # точное совпадение кода проекта
+        codes = {_proj_code(c) for c in cfg["projects"]}
+        mask = df[PROJECT_COL].apply(lambda s: _proj_code(s) in codes)  # точный код
         if mask.any():
             matched = sorted(df.loc[mask, PROJECT_COL].astype(str).unique())
             return mask, f"{PROJECT_COL} ∈ {{{', '.join(matched)}}}"
