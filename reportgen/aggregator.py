@@ -13,11 +13,12 @@ from __future__ import annotations
 import io
 import re
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 import pandas as pd
-from googleapiclient.http import MediaIoBaseDownload
 
-from .drive import DriveClient
+if TYPE_CHECKING:
+    from .drive import DriveClient
 
 # Транзакционная таблица (Царь продажи)
 TX_DATE = "Дата оплаты"
@@ -191,7 +192,8 @@ def _find(files: list[dict], patterns: list[str]) -> dict | None:
     return None
 
 
-def _download_xlsx(drive: DriveClient, file_id: str) -> pd.DataFrame | None:
+def _download_xlsx(drive: "DriveClient", file_id: str) -> pd.DataFrame | None:
+    from googleapiclient.http import MediaIoBaseDownload
     req = drive._drive.files().get_media(fileId=file_id, supportsAllDrives=True)  # noqa: SLF001
     buf = io.BytesIO()
     downloader = MediaIoBaseDownload(buf, req)

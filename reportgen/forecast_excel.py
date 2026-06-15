@@ -17,15 +17,18 @@ import io
 import re
 
 import pandas as pd
-from googleapiclient.http import MediaIoBaseUpload
 
 from .aggregator import (
     PF_QTY_FACT, PF_QTY_PLAN, PF_REV_FACT, PF_REV_PLAN,
     MONTHS_RU, _clean_plan_fact, _download_xlsx, _find, _list_xlsx, _to_num,
 )
+from typing import TYPE_CHECKING
+
 from .ad_dashboards import AD, MONTHS_ORDER
-from .drive import DriveClient
 from .forecast_models import MONTHS, forecast_series
+
+if TYPE_CHECKING:
+    from .drive import DriveClient
 
 PRODUCTS = {"ОФД": ["п453"], "Маркет": ["п470", "п47101"]}
 PRODUCT_UCHETA = {"ОФД": "Контур.ОФД", "Маркет": "Контур.Маркет"}
@@ -36,6 +39,54 @@ MONTHS_SHORT = {1: "янв", 2: "фев", 3: "мар", 4: "апр", 5: "май",
 def _proj_code(s) -> str:
     m = re.match(r"\s*(п?\d+)", str(s).strip().lower())
     return m.group(1) if m else str(s).strip().lower()
+
+
+# ── чтение чистых экспортов план-факт (формат data(22)) ───────────
+
+def _series(df: pd.DataFrame, col: str, year: int) -> dict[int, float]:
+    sel = df[df["_year"] == year]
+    return {m: float(sel[sel["_month"] == m][col].sum()) for m in MONTHS}
+
+
+def load_planfact_product(path_or_df, code: str | None = None) -> pd.DataFrame:
+    """Чистый экспорт план-факт (как data(22)): заголовок ищется по 'Месяц',
+    при необходимости фильтр по коду проекта (точное совпадение, чтобы
+    п453 не тянул п45302)."""
+    raw = (pd.read_excel(path_or_df, header=None)
+           if not isinstance(path_or_df, pd.DataFrame) else path_or_df)
+    df = _clean_plan_fact(raw)
+    if code:
+        target = _proj_code(code)
+        df = df[df["Проект"].apply(lambda s: _proj_code(s) == target)]
+    return df
+
+
+def build_product(df: pd.DataFrame, name: str, completed: int,
+                  source_label: str, ad_attr: dict | None = None) -> dict:
+    plan_rev = _series(df, PF_REV_PLAN, 2026)
+    rev_25 = _series(df, PF_REV_FACT, 2025)
+    rev_26 = _series(df, PF_REV_FACT, 2026)
+    plan_qty = _series(df, PF_QTY_PLAN, 2026)
+    qty_25 = _series(df, PF_QTY_FACT, 2025)
+    qty_26 = _series(df, PF_QTY_FACT, 2026)
+    return {
+        "projects": [source_label],
+        "rev_2025": rev_25, "rev_2026": rev_26, "plan_rev": plan_rev,
+        "qty_2025": qty_25, "qty_2026": qty_26, "plan_qty": plan_qty,
+        "fc_rev": forecast_series(rev_25, rev_26, plan_rev, completed),
+        "fc_qty": forecast_series(qty_25, qty_26, plan_qty, completed),
+        "ad_attr": ad_attr or {"rev": {}, "opl": {}},
+    }
+
+
+def build_data_local(sources: dict, completed: int) -> dict:
+    """sources = {name: {"path"|"df":..., "code":..., "label":...}}."""
+    out = {"completed": completed, "products": {}}
+    for name, cfg in sources.items():
+        df = load_planfact_product(cfg.get("df", cfg.get("path")), cfg.get("code"))
+        out["products"][name] = build_product(
+            df, name, completed, cfg.get("label", name), cfg.get("ad_attr"))
+    return out
 
 
 # ── чтение источников ─────────────────────────────────────────────
@@ -330,8 +381,8 @@ def write_excel(data: dict) -> bytes:
     ws["A2"] = ("Источник: дашборды Контекст (распознано с экрана, суммы сверены с «Итого»). "
                 "Выручка по целевым лидам — из data (15). Июнь 2026 — неполный.")
     ws["A2"].font = sub_font
-    head = ["Месяц", "Маркет расход", "Маркет опл.", "Маркет CPO", "Маркет CPL", "Маркет выр.лиды",
-            "ОФД расход", "ОФД опл.", "ОФД CPO", "ОФД CPL", "ОФД выр.лиды"]
+    head = ["Месяц", "Маркет расход", "Маркет опл.", "Маркет CPO", "Маркет CPL",
+            "ОФД расход", "ОФД опл.", "ОФД CPO", "ОФД CPL"]
     hr = 4
     for c, h in enumerate(head, 1):
         ws.cell(row=hr, column=c, value=h)
@@ -339,20 +390,18 @@ def write_excel(data: dict) -> bytes:
     for i, (y, mth) in enumerate(MONTHS_ORDER):
         r = hr + 1 + i
         ws.cell(row=r, column=1, value=f"{MONTHS_SHORT[mth]} {y}")
-        for base_c, prod in ((2, "Маркет"), (7, "ОФД")):
+        for base_c, prod in ((2, "Маркет"), (6, "ОФД")):
             spend = AD[prod]["spend"].get((y, mth), 0)
             opl = AD[prod]["oplaty"].get((y, mth), 0)
             cpl = AD[prod]["cpl"].get((y, mth), 0)
             cpo = spend / opl if opl else 0
-            adrev = data["products"][prod]["ad_attr"]["rev"].get((y, mth), 0)
             ws.cell(row=r, column=base_c, value=spend).number_format = money
             ws.cell(row=r, column=base_c + 1, value=opl)
             ws.cell(row=r, column=base_c + 2, value=round(cpo)).number_format = money
             ws.cell(row=r, column=base_c + 3, value=cpl).number_format = money
-            ws.cell(row=r, column=base_c + 4, value=round(adrev)).number_format = money
         for c in range(1, len(head) + 1):
             ws.cell(row=r, column=c).border = border
-    autosize(ws, [10] + [14] * 10)
+    autosize(ws, [10] + [14] * 8)
 
     # ── методология ──────────────────────────────────────────────
     ws = wb.create_sheet("Методология")
@@ -425,6 +474,7 @@ def write_excel(data: dict) -> bytes:
 
 
 def upload_xlsx(drive: DriveClient, folder_id: str, filename: str, content: bytes) -> str:
+    from googleapiclient.http import MediaIoBaseUpload
     media = MediaIoBaseUpload(
         io.BytesIO(content),
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

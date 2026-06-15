@@ -15,3 +15,7 @@ secrets/service_account*.json
 dist/
 build/
 out/
+# локальные исходники данных и выгрузки (живут на main)
+data (*).xlsx
+Снимок экрана*.png
+*_test*.xlsx
